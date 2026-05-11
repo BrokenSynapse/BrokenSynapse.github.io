@@ -17,12 +17,12 @@
       These place the card art inside the transparent art window
       of cards/card-base.png.
 
-      Tweak these four values if your base image's window changes.
+      These four values define the actual visible art square. If the art does not fill the square, adjust these, not object-position.
     */
-    --art-left:7.25%;
-    --art-top:17.7%;
-    --art-width:85.5%;
-    --art-height:44.6%;
+    --art-left:5.15%;
+    --art-top:17.05%;
+    --art-width:89.7%;
+    --art-height:45.9%;
   }
 
   *{box-sizing:border-box}
@@ -142,14 +142,10 @@
   }
 
   .art-stage img{
-    position:absolute;
-    left:0;
-    top:0;
     width:100%;
-    height:122%;
+    height:100%;
     object-fit:fill;
     object-position:center center;
-    transform:translateY(-9%);
     display:block;
     user-select:none;
     -webkit-user-drag:none;
