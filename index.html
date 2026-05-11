@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Advance Auto Cards</title>
+
+  <style>
+    :root {
+      --bg: #070707;
+      --panel: #111;
+      --panel-2: #181818;
+      --yellow: #ffd100;
+      --yellow-dark: #c79b00;
+      --text: #f5f5f5;
+      --muted: #aaa;
+      --border: #2c2c2c;
+      --danger: #ff4040;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Arial, Helvetica, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top, rgba(255, 209, 0, 0.12), transparent 35%),
+        linear-gradient(135deg, #050505 0%, #111 50%, #050505 100%);
+      overflow-x: hidden;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    /* LOGIN PAGE */
+
+    #loginScreen {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .login-card {
+      width: min(420px, 100%);
+      background: linear-gradient(180deg, #181818, #0d0d0d);
+      border: 2px solid var(--yellow);
+      border-radius: 18px;
+      box-shadow:
+        0 0 30px rgba(255, 209, 0, 0.16),
+        0 20px 50px rgba(0, 0, 0, 0.7);
+      overflow: hidden;
+    }
+
+    .login-header {
+      position: relative;
+      padding: 22px 22px 18px;
+      background: #050505;
+      border-bottom: 1px solid rgba(255, 209, 0, 0.45);
+    }
+
+    .slash {
+      position: absolute;
+      top: 0;
+      left: 18px;
+      width: 16px;
+      height: 100%;
+      background: var(--yellow);
+      transform: skewX(-18deg);
+      box-shadow: 26px 0 0 rgba(255, 209, 0, 0.38);
+    }
+
+    .brand {
+      position: relative;
+      margin-left: 54px;
+    }
+
+    .brand-title {
+      margin: 0;
+      font-size: 2rem;
+      line-height: 0.95;
+      font-weight: 900;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      font-style: italic;
+      color: var(--yellow);
+    }
+
+    .brand-subtitle {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 1.6px;
+    }
+
+    .login-body {
+      padding: 24px;
+    }
+
+    .terminal-label {
+      margin-bottom: 8px;
+      color: var(--yellow);
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+    }
+
+    .login-body input {
+      width: 100%;
+      padding: 14px 15px;
+      border-radius: 10px;
+      border: 1px solid #333;
+      outline: none;
+      background: #080808;
+      color: white;
+      font-size: 1rem;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+    }
+
+    .login-body input:focus {
+      border-color: var(--yellow);
+      box-shadow:
+        0 0 0 3px rgba(255, 209, 0, 0.16),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    }
+
+    .hint {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.35;
+    }
+
+    .login-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: transform 0.08s ease, filter 0.12s ease, background 0.12s ease;
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    .primary-btn {
+      flex: 1;
+      background: var(--yellow);
+      color: #050505;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+
+    .primary-btn:hover {
+      filter: brightness(1.08);
+    }
+
+    .ghost-btn {
+      background: #222;
+      color: var(--text);
+      border: 1px solid #333;
+    }
+
+    .ghost-btn:hover {
+      background: #2a2a2a;
+    }
+
+    .error {
+      margin-top: 12px;
+      color: var(--danger);
+      font-size: 0.86rem;
+      min-height: 1.1em;
+    }
+
+    .checker {
+      height: 18px;
+      background:
+        linear-gradient(45deg, #fff 25%, transparent 25%),
+        linear-gradient(-45deg, #fff 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #fff 75%),
+        linear-gradient(-45deg, transparent 75%, #fff 75%);
+      background-color: #000;
+      background-size: 18px 18px;
+      background-position: 0 0, 0 9px, 9px -9px, -9px 0;
+      opacity: 0.95;
+    }
+
+    /* GAME SHELL */
+
+    #gameScreen {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .topbar {
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 18px;
+      background: #050505;
+      border-bottom: 2px solid var(--yellow);
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+    }
+
+    .topbar-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .mini-slash {
+      width: 13px;
+      height: 36px;
+      background: var(--yellow);
+      transform: skewX(-18deg);
+      box-shadow: 20px 0 0 rgba(255, 209, 0, 0.35);
+      flex: 0 0 auto;
+    }
+
+    .game-title {
+      font-size: 1.25rem;
+      font-weight: 900;
+      text-transform: uppercase;
+      font-style: italic;
+      color: var(--yellow);
+      white-space: nowrap;
+    }
+
+    .user-pill {
+      color: var(--muted);
+      font-size: 0.9rem;
+      white-space: nowrap;
+    }
+
+    .user-pill strong {
+      color: var(--text);
+    }
+
+    .main {
+      flex: 1;
+      padding: 22px;
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 18px;
+    }
+
+    .panel {
+      background: rgba(17, 17, 17, 0.92);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: 0 12px 34px rgba(0, 0, 0, 0.35);
+    }
+
+    .panel h2,
+    .panel h3 {
+      margin-top: 0;
+      color: var(--yellow);
+      text-transform: uppercase;
+      font-style: italic;
+    }
+
+    .menu-btn {
+      width: 100%;
+      margin-bottom: 10px;
+      background: #1f1f1f;
+      color: var(--text);
+      border: 1px solid #333;
+      text-align: left;
+    }
+
+    .menu-btn:hover {
+      border-color: var(--yellow);
+    }
+
+    .table-zone {
+      min-height: 420px;
+      border: 2px dashed rgba(255, 209, 0, 0.35);
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      text-align: center;
+      padding: 24px;
+      background:
+        linear-gradient(135deg, rgba(255, 209, 0, 0.07), transparent 30%),
+        rgba(0, 0, 0, 0.22);
+    }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .stat {
+      background: #080808;
+      border: 1px solid #282828;
+      border-radius: 12px;
+      padding: 14px;
+    }
+
+    .stat-label {
+      color: var(--muted);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .stat-value {
+      margin-top: 6px;
+      color: var(--yellow);
+      font-size: 1.5rem;
+      font-weight: 900;
+    }
+
+    @media (max-width: 760px) {
+      .main {
+        grid-template-columns: 1fr;
+      }
+
+      .topbar {
+        height: auto;
+        min-height: 64px;
+        flex-wrap: wrap;
+        padding: 12px 14px;
+      }
+
+      .game-title {
+        font-size: 1rem;
+      }
+
+      .user-pill {
+        width: 100%;
+      }
+
+      .status-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- LOGIN SCREEN -->
+  <section id="loginScreen">
+    <div class="login-card">
+      <div class="login-header">
+        <div class="slash"></div>
+        <div class="brand">
+          <h1 class="brand-title">Advance<br>Auto Cards</h1>
+          <div class="brand-subtitle">Starter Store Access Terminal</div>
+        </div>
+      </div>
+
+      <div class="checker"></div>
+
+      <div class="login-body">
+        <div class="terminal-label">Enter Counter Name</div>
+        <input
+          id="usernameInput"
+          type="text"
+          maxlength="24"
+          autocomplete="off"
+          placeholder="Example: Brad, Terry, Starter Store..."
+        />
+
+        <div class="hint">
+          This name is saved only on this browser for now. Later, this can become your Firebase player name.
+        </div>
+
+        <div class="login-actions">
+          <button class="primary-btn" id="loginBtn">Clock In</button>
+        </div>
+
+        <div class="error" id="loginError"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- GAME SCREEN -->
+  <section id="gameScreen" class="hidden">
+    <header class="topbar">
+      <div class="topbar-title">
+        <div class="mini-slash"></div>
+        <div class="game-title">Advance Auto Cards</div>
+      </div>
+
+      <div class="user-pill">
+        Clocked in as <strong id="currentUser">Unknown</strong>
+      </div>
+
+      <button class="ghost-btn" id="logoutBtn">Change User</button>
+    </header>
+
+    <main class="main">
+      <aside class="panel">
+        <h3>Store Menu</h3>
+        <button class="menu-btn">Create Room</button>
+        <button class="menu-btn">Join Room</button>
+        <button class="menu-btn">Deck Builder</button>
+        <button class="menu-btn">Card Library</button>
+        <button class="menu-btn">Settings</button>
+      </aside>
+
+      <section class="panel">
+        <h2>Starter Store War</h2>
+
+        <div class="status-grid">
+          <div class="stat">
+            <div class="stat-label">Store Sanity</div>
+            <div class="stat-value">30</div>
+          </div>
+
+          <div class="stat">
+            <div class="stat-label">Hand</div>
+            <div class="stat-value">0</div>
+          </div>
+
+          <div class="stat">
+            <div class="stat-label">Turn</div>
+            <div class="stat-value">—</div>
+          </div>
+        </div>
+
+        <div class="table-zone">
+          <div>
+            <strong>Game table goes here.</strong>
+            <br><br>
+            Next step: wire these buttons into your card renderer, local deck data, then Firebase rooms.
+          </div>
+        </div>
+      </section>
+    </main>
+  </section>
+
+  <script>
+    const loginScreen = document.getElementById("loginScreen");
+    const gameScreen = document.getElementById("gameScreen");
+    const usernameInput = document.getElementById("usernameInput");
+    const loginBtn = document.getElementById("loginBtn");
+    const logoutBtn = document.getElementById("logoutBtn");
+    const loginError = document.getElementById("loginError");
+    const currentUser = document.getElementById("currentUser");
+
+    const STORAGE_KEY = "aac_username";
+
+    function cleanName(name) {
+      return name.trim().replace(/\s+/g, " ");
+    }
+
+    function showGame(username) {
+      currentUser.textContent = username;
+      loginScreen.classList.add("hidden");
+      gameScreen.classList.remove("hidden");
+      document.title = `Advance Auto Cards - ${username}`;
+    }
+
+    function showLogin() {
+      gameScreen.classList.add("hidden");
+      loginScreen.classList.remove("hidden");
+      document.title = "Advance Auto Cards";
+      usernameInput.focus();
+    }
+
+    function login() {
+      const username = cleanName(usernameInput.value);
+
+      if (!username) {
+        loginError.textContent = "You gotta enter a name before you clock in.";
+        return;
+      }
+
+      if (username.length < 2) {
+        loginError.textContent = "Name is too short.";
+        return;
+      }
+
+      localStorage.setItem(STORAGE_KEY, username);
+      loginError.textContent = "";
+      showGame(username);
+    }
+
+    function logout() {
+      localStorage.removeItem(STORAGE_KEY);
+      usernameInput.value = "";
+      showLogin();
+    }
+
+    loginBtn.addEventListener("click", login);
+
+    usernameInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") login();
+    });
+
+    logoutBtn.addEventListener("click", logout);
+
+    window.addEventListener("DOMContentLoaded", () => {
+      const savedName = localStorage.getItem(STORAGE_KEY);
+
+      if (savedName) {
+        showGame(savedName);
+      } else {
+        showLogin();
+      }
+    });
+  </script>
+</body>
+</html>
