@@ -17,12 +17,15 @@
       These place the card art inside the transparent art window
       of cards/card-base.png.
 
-      Tweak these four values if your base image's window changes.
+      Current recovery values:
+      - visible again
+      - wider/taller than the old cramped version
+      - still under the card frame overlay
     */
-    --art-left:7.25%;
-    --art-top:40.7%;
-    --art-width:85.5%;
-    --art-height:44.6%;
+    --art-left:6.1%;
+    --art-top:17.0%;
+    --art-width:88.0%;
+    --art-height:46.3%;
   }
 
   *{box-sizing:border-box}
@@ -126,10 +129,6 @@
     box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);
   }
 
-  /*
-    Art goes into the visible picture window, not across the whole card.
-    This keeps portraits/composites centered under the transparent base.
-  */
   .art-stage{
     position:absolute;
     left:var(--art-left);
@@ -142,23 +141,15 @@
   }
 
   .art-stage img{
-    position:absolute;
-    left:0;
-    top:0;
     width:100%;
-    height:122%;
-    object-fit:fill;
-    object-position:center center;
-    transform:translateY(-9%);
+    height:100%;
+    object-fit:var(--fit, fill);
+    object-position:var(--pos, center center);
     display:block;
     user-select:none;
     -webkit-user-drag:none;
   }
 
-  /*
-    Base is the transparent PNG frame/text-box/title overlay.
-    It must sit above the art.
-  */
   .base{
     position:absolute;
     inset:0;
@@ -269,17 +260,29 @@
 Expected files:
 /aac.html
 /cards.json
-/cards/card-base.png                 transparent PNG frame/text-box overlay
-/cards/art/Brad.png                  art only, under the frame
+/cards/card-base.png
+/cards/art/Brad.png
 /cards/art/James.png
 
 cards.json example:
 [
-  { "name":"Brad", "type":"Employee", "art":"cards/art/Brad.png", "base":"cards/card-base.png", "finish":"holo" },
-  { "name":"James", "type":"Employee", "art":"cards/art/James.png", "base":"cards/card-base.png", "finish":"normal" }
+  {
+    "name":"Brad",
+    "type":"Employee",
+    "art":"cards/art/Brad.png",
+    "base":"cards/card-base.png",
+    "finish":"normal"
+  },
+  {
+    "name":"James",
+    "type":"Employee",
+    "art":"cards/art/James.png",
+    "base":"cards/card-base.png",
+    "finish":"holo"
+  }
 ]
 
-Optional per-card art positioning:
+Optional per-card overrides:
 [
   {
     "name":"Brad",
@@ -288,15 +291,16 @@ Optional per-card art positioning:
     "base":"cards/card-base.png",
     "finish":"normal",
     "fit":"fill",
-    "position":"50% 38%"
+    "position":"center center"
   }
 ]
 
-fit can be "fill", "contain", or "cover". Default is "fill" so the full art stretches to completely fill the artwork window without leaving a border.
-position can be "center center", "50% 35%", "top center", etc.
+fit can be:
+- "fill"    = squish/stretch to fill the art window
+- "contain" = show full image without cropping, may leave borders
+- "cover"   = crop/zoom to fill
 
-Static GitHub Pages cannot automatically scan a folder for images, so this page reads cards.json.
-If cards.json is missing, it uses the fallback list below.
+Default is "fill".
 */
 
 const DEFAULT_BASE = "cards/card-base.png";
