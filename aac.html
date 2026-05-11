@@ -20,9 +20,9 @@
       Tweak these four values if your base image's window changes.
     */
     --art-left:7.25%;
-    --art-top:17.7%;
+    --art-top:16.5%;
     --art-width:85.5%;
-    --art-height:44.6%;
+    --art-height:43.25%;
   }
 
   *{box-sizing:border-box}
@@ -143,9 +143,17 @@
 
   .art-stage img{
     width:100%;
-    height:100%;
+    /*
+      Fill ignores object-position because there is no leftover space to move inside.
+      So the actual visible tuning happens here: make the image a little taller
+      than the window and shift it slightly up. That overfills the masked art
+      opening so the base frame does not reveal a bottom sliver.
+    */
+    height:108%;
     object-fit:var(--fit, fill);
-    object-position:var(--pos, center center);
+    object-position:center center;
+    transform:translateY(-2.5%);
+    transform-origin:center center;
     display:block;
     user-select:none;
     -webkit-user-drag:none;
