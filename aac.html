@@ -128,7 +128,8 @@
 
   /*
     Art goes into the visible picture window, not across the whole card.
-    This keeps portraits/composites centered under the transparent base.
+    The image is contained by default, so the entire source art shrinks to fit
+    inside this box instead of being cropped/zoomed/repositioned.
   */
   .art-stage{
     position:absolute;
@@ -144,7 +145,7 @@
   .art-stage img{
     width:100%;
     height:100%;
-    object-fit:var(--fit, cover);
+    object-fit:var(--fit, contain);
     object-position:var(--pos, center center);
     display:block;
     user-select:none;
@@ -178,6 +179,10 @@
     margin:3px 2px 0;
     color:var(--muted);
     font-size:.82rem;
+  }
+
+  .missing[hidden]{
+    display:none !important;
   }
 
   .missing{
@@ -284,7 +289,8 @@ Optional per-card art positioning:
   }
 ]
 
-fit can be "cover" or "contain".
+fit can be "contain", "cover", or "fill".
+Default is "contain" so the entire art image shrinks into the artwork window without cropping.
 position can be "center center", "50% 35%", "top center", etc.
 
 Static GitHub Pages cannot automatically scan a folder for images, so this page reads cards.json.
@@ -340,8 +346,8 @@ function cardTemplate(card){
             src="${art}"
             alt="${name} art"
             loading="lazy"
-            onload="this.parentElement.querySelector('.missing').hidden=true"
-            onerror="this.parentElement.querySelector('.missing').hidden=false"
+            onload="this.dataset.loaded='1';this.parentElement.querySelector('.missing').hidden=true"
+            onerror="if(!this.dataset.loaded)this.parentElement.querySelector('.missing').hidden=false"
           >
           <div class="missing" hidden>Missing image:<br>${art}</div>
         </div>
@@ -386,7 +392,7 @@ async function loadCards(){
       art:c.art,
       base:c.base || DEFAULT_BASE,
       finish:c.finish || "normal",
-      fit:c.fit || "cover",
+      fit:c.fit || "contain",
       position:c.position || "center center"
     })).filter(c=>c.art);
 
