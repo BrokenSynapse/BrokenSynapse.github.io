@@ -1,0 +1,16 @@
+[
+  {
+    "name": "Brad",
+    "type": "Employee",
+    "art": "cards/art/brad.png",
+    "base": "cards/card-base.png",
+    "finish": "holo"
+  },
+  {
+    "name": "James",
+    "type": "Manager",
+    "art": "cards/art/james.png",
+    "base": "cards/card-base.png",
+    "finish": "normal"
+  }
+]
