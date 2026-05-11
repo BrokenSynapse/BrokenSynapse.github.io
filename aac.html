@@ -128,8 +128,7 @@
 
   /*
     Art goes into the visible picture window, not across the whole card.
-    The image is contained by default, so the entire source art shrinks to fit
-    inside this box instead of being cropped/zoomed/repositioned.
+    This keeps portraits/composites centered under the transparent base.
   */
   .art-stage{
     position:absolute;
@@ -181,10 +180,6 @@
     font-size:.82rem;
   }
 
-  .missing[hidden]{
-    display:none !important;
-  }
-
   .missing{
     position:absolute;
     inset:0;
@@ -197,6 +192,10 @@
     color:#ffd66d;
     font-weight:800;
     line-height:1.12;
+  }
+
+  .missing[hidden]{
+    display:none !important;
   }
 
   .empty{
@@ -284,13 +283,12 @@ Optional per-card art positioning:
     "art":"cards/art/Brad.png",
     "base":"cards/card-base.png",
     "finish":"normal",
-    "fit":"cover",
+    "fit":"contain",
     "position":"50% 38%"
   }
 ]
 
-fit can be "contain", "cover", or "fill".
-Default is "contain" so the entire art image shrinks into the artwork window without cropping.
+fit can be "contain" or "cover". Default is "contain" so the full art shrinks into the art window instead of cropping.
 position can be "center center", "50% 35%", "top center", etc.
 
 Static GitHub Pages cannot automatically scan a folder for images, so this page reads cards.json.
@@ -334,7 +332,7 @@ function cardTemplate(card){
   const finish = esc(card.finish || "normal");
   const art = esc(card.art);
   const base = esc(card.base || DEFAULT_BASE);
-  const fit = esc(cssVarValue(card.fit, "cover"));
+  const fit = esc(cssVarValue(card.fit, "contain"));
   const pos = esc(cssVarValue(card.position, "center center"));
 
   return `
@@ -346,8 +344,8 @@ function cardTemplate(card){
             src="${art}"
             alt="${name} art"
             loading="lazy"
-            onload="this.dataset.loaded='1';this.parentElement.querySelector('.missing').hidden=true"
-            onerror="if(!this.dataset.loaded)this.parentElement.querySelector('.missing').hidden=false"
+            onload="this.parentElement.querySelector('.missing').hidden=true"
+            onerror="this.parentElement.querySelector('.missing').hidden=false"
           >
           <div class="missing" hidden>Missing image:<br>${art}</div>
         </div>
