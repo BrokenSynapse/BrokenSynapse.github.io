@@ -138,7 +138,7 @@
     height:var(--art-height);
     z-index:1;
     overflow:hidden;
-    background:#050505;
+    background:transparent;
   }
 
   .art-stage img{
@@ -283,12 +283,12 @@ Optional per-card art positioning:
     "art":"cards/art/Brad.png",
     "base":"cards/card-base.png",
     "finish":"normal",
-    "fit":"contain",
+    "fit":"fill",
     "position":"50% 38%"
   }
 ]
 
-fit can be "fill", "contain", or "cover". Default is "fill" so the full art stretches/squishes to fully occupy the art window without cropping.
+fit can be "fill", "contain", or "cover". Default is "fill" so the full art stretches to completely fill the artwork window without leaving a border.
 position can be "center center", "50% 35%", "top center", etc.
 
 Static GitHub Pages cannot automatically scan a folder for images, so this page reads cards.json.
