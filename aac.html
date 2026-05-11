@@ -20,7 +20,7 @@
       Tweak these four values if your base image's window changes.
     */
     --art-left:7.25%;
-    --art-top:16.5%;
+    --art-top:17.7%;
     --art-width:85.5%;
     --art-height:43.25%;
   }
@@ -145,7 +145,7 @@
     width:100%;
     height:100%;
     object-fit:var(--fit, fill);
-    object-position:var(--pos, center 20%);
+    object-position:var(--pos, center center);
     display:block;
     user-select:none;
     -webkit-user-drag:none;
@@ -289,7 +289,7 @@ Optional per-card art positioning:
 ]
 
 fit can be "fill", "contain", or "cover". Default is "fill" so the full art stretches to completely fill the artwork window without leaving a border.
-position can be "center 54%", "50% 35%", "top center", etc. The default is slightly lowered to sit better in the art box.
+position can be "center center", "50% 35%", "top center", etc.
 
 Static GitHub Pages cannot automatically scan a folder for images, so this page reads cards.json.
 If cards.json is missing, it uses the fallback list below.
@@ -333,7 +333,7 @@ function cardTemplate(card){
   const art = esc(card.art);
   const base = esc(card.base || DEFAULT_BASE);
   const fit = esc(cssVarValue(card.fit, "fill"));
-  const pos = esc(cssVarValue(card.position, "center 54%"));
+  const pos = esc(cssVarValue(card.position, "center center"));
 
   return `
     <article class="slot ${finish === "holo" ? "holo" : ""}" data-name="${name.toLowerCase()}" data-finish="${finish}">
@@ -391,7 +391,7 @@ async function loadCards(){
       base:c.base || DEFAULT_BASE,
       finish:c.finish || "normal",
       fit:c.fit || "fill",
-      position:c.position || "center 54%"
+      position:c.position || "center center"
     })).filter(c=>c.art);
 
     if(!allCards.length) throw new Error("cards.json contained no valid cards");
