@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Advance Auto Cards</title>
+<style>
+  :root{--bg:#070707;--panel:#111;--text:#f4f4f4;--muted:#a7a7a7;--gold:#f6b800;--gold2:#ffdf55}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;background:radial-gradient(circle at 50% 0%,rgba(255,185,0,.14),transparent 38%),linear-gradient(180deg,#101010,var(--bg));color:var(--text);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+  header{position:sticky;top:0;z-index:5;background:rgba(5,5,5,.92);backdrop-filter:blur(8px);border-bottom:2px solid rgba(246,184,0,.35);padding:14px 16px}
+  h1{margin:0;font-size:clamp(1.45rem,4vw,2.3rem);letter-spacing:.03em;line-height:1}
+  .subtitle{margin-top:6px;color:var(--muted);font-size:.95rem}
+  .bar{margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  input,select,button{border:1px solid rgba(246,184,0,.45);background:#0b0b0b;color:var(--text);border-radius:10px;padding:10px 12px;font-size:1rem}
+  input{flex:1 1 220px;min-width:0}
+  button{cursor:pointer;font-weight:800;color:#000;background:linear-gradient(180deg,var(--gold2),var(--gold))}
+  main{padding:18px;max-width:1450px;margin:0 auto}.status{margin:0 0 14px;color:var(--muted)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:18px}
+  .slot{background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.015)),var(--panel);border:1px solid rgba(246,184,0,.22);border-radius:18px;padding:10px;box-shadow:0 12px 35px rgba(0,0,0,.45)}
+  .card-wrap{position:relative;width:100%;aspect-ratio:2/3;border-radius:14px;overflow:hidden;background:#050505;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
+  .card-wrap img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;user-select:none;-webkit-user-drag:none}
+  .art{z-index:1}.base{z-index:2;pointer-events:none}.name{margin:10px 2px 2px;font-weight:900;font-size:1rem;line-height:1.15}.meta{margin:3px 2px 0;color:var(--muted);font-size:.82rem}
+  .missing{position:absolute;inset:0;z-index:3;display:grid;place-items:center;text-align:center;padding:12px;background:rgba(0,0,0,.72);color:#ffd66d;font-weight:800}
+  .empty{border:1px dashed rgba(246,184,0,.5);border-radius:16px;padding:22px;color:var(--muted);background:rgba(0,0,0,.25)}
+  .holo .card-wrap::after{content:"";position:absolute;inset:0;z-index:4;pointer-events:none;opacity:.62;mix-blend-mode:screen;background:linear-gradient(115deg,transparent 0%,rgba(255,255,255,.18) 20%,rgba(255,0,180,.22) 34%,rgba(0,190,255,.22) 47%,rgba(255,255,0,.16) 61%,transparent 78%);background-size:240% 240%;animation:holo 3.8s linear infinite}@keyframes holo{from{background-position:0% 50%}to{background-position:200% 50%}}
+  @media(max-width:520px){main{padding:12px}.grid{grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:12px}.slot{padding:8px;border-radius:14px}.bar{gap:8px}input,select,button{font-size:.92rem;padding:9px 10px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Advance Auto Cards</h1>
+  <div class="subtitle">Basic composite viewer: card base + individual card art.</div>
+  <div class="bar">
+    <input id="search" type="search" placeholder="Search cards..." autocomplete="off" />
+    <select id="finish"><option value="">All finishes</option><option value="normal">Normal</option><option value="holo">Holo</option></select>
+    <button id="reload" type="button">Reload</button>
+  </div>
+</header>
+<main><p id="status" class="status">Loading cards...</p><section id="grid" class="grid"></section></main>
+<script>
+/*
+Expected files:
+/aac.html
+/cards.json
+/cards/card-base.png                 transparent PNG frame/text-box overlay
+/cards/art/brad.png                  art only, under the frame
+/cards/art/james.png
+/cards/art/lockpants.png
+
+cards.json example:
+[
+  { "name":"Brad", "type":"Employee", "art":"cards/art/brad.png", "base":"cards/card-base.png", "finish":"holo" },
+  { "name":"James", "type":"Manager", "art":"cards/art/james.png", "base":"cards/card-base.png", "finish":"normal" }
+]
+
+Static GitHub Pages cannot automatically scan a folder for images, so this page reads cards.json.
+If cards.json is missing, it uses the fallback list below.
+*/
+const DEFAULT_BASE = "cards/card-base.png";
+const FALLBACK_CARDS = [
+  { name:"Brad", type:"Employee", art:"cards/art/brad.png", base:DEFAULT_BASE, finish:"normal" },
+  { name:"James", type:"Manager", art:"cards/art/james.png", base:DEFAULT_BASE, finish:"normal" },
+  { name:"Lockpants", type:"Customer", art:"cards/art/lockpants.png", base:DEFAULT_BASE, finish:"normal" }
+];
+let allCards = [];
+const grid = document.getElementById("grid"), statusEl = document.getElementById("status"), searchEl = document.getElementById("search"), finishEl = document.getElementById("finish"), reloadBtn = document.getElementById("reload");
+function esc(v){return String(v ?? "").replace(/[&<>\"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'\"':"&quot;","'":"&#039;"}[ch]));}
+function cardTemplate(card){
+  const name=esc(card.name||"Unnamed Card"), type=esc(card.type||"Unknown"), finish=esc(card.finish||"normal"), art=esc(card.art), base=esc(card.base||DEFAULT_BASE);
+  return `<article class="slot ${finish==='holo'?'holo':''}" data-name="${name.toLowerCase()}" data-finish="${finish}"><div class="card-wrap"><img class="art" src="${art}" alt="${name} art" onerror="this.nextElementSibling.nextElementSibling.hidden=false"><img class="base" src="${base}" alt="" aria-hidden="true"><div class="missing" hidden>Missing image:<br>${art}</div></div><div class="name">${name}</div><div class="meta">${type} · ${finish}</div></article>`;
+}
+function render(){
+  const q=searchEl.value.trim().toLowerCase(), finish=finishEl.value;
+  const shown=allCards.filter(c=>{const hay=`${c.name||""} ${c.type||""} ${c.finish||""}`.toLowerCase();return (!q||hay.includes(q))&&(!finish||(c.finish||"normal")===finish);});
+  statusEl.textContent=`${shown.length} card${shown.length===1?"":"s"} shown. ${allCards.length} loaded.`;
+  grid.innerHTML=shown.length?shown.map(cardTemplate).join(""):`<div class="empty">No cards matched. Check cards.json or your image paths.</div>`;
+}
+async function loadCards(){
+  statusEl.textContent="Loading cards..."; grid.innerHTML="";
+  try{
+    const res=await fetch("cards.json?cacheBust="+Date.now(),{cache:"no-store"});
+    if(!res.ok) throw new Error("cards.json not found");
+    const data=await res.json();
+    if(!Array.isArray(data)) throw new Error("cards.json must be an array");
+    allCards=data.map(c=>({name:c.name||"Unnamed Card",type:c.type||"Unknown",art:c.art,base:c.base||DEFAULT_BASE,finish:c.finish||"normal"})).filter(c=>c.art);
+    if(!allCards.length) throw new Error("cards.json contained no valid cards");
+  }catch(err){
+    console.warn("Using fallback cards:",err);
+    allCards=FALLBACK_CARDS;
+    statusEl.textContent="Using fallback card list. Add cards.json to control the full card list.";
+  }
+  render();
+}
+searchEl.addEventListener("input",render); finishEl.addEventListener("change",render); reloadBtn.addEventListener("click",loadCards); loadCards();
+</script>
+</body>
+</html>
