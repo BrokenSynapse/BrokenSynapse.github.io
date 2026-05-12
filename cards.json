@@ -28,6 +28,13 @@
     "finish": "normal"
   },
   {
+    "name": "Chilli (He Sit)",
+    "type": "Employee",
+    "art": "cards/art/Chilli Sit.png",
+    "base": "cards/card-base.png",
+    "finish": "normal"
+  },
+  {
     "name": "Dunson",
     "type": "Customer",
     "art": "cards/art/Dunson.png",
