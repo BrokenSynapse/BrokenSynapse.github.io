@@ -1,0 +1,31 @@
+services:
+  caddy:
+    image: caddy:latest
+    container_name: bs-caddy
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./site:/srv/site:ro
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+
+  api:
+    build: ./api
+    container_name: bs-api
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      DB_PATH: /data/brokensynapse.sqlite
+      SHEET_ID: 1Kis40W84qlJVKvC6One9DX1iQvl0V71GL3UYXuZdWQc
+      ADMIN_TOKEN: change-me-after-deploy
+    volumes:
+      - ./data:/data
+      - ./uploads:/uploads
+
+volumes:
+  caddy_data:
+  caddy_config:

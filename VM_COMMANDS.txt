@@ -1,0 +1,45 @@
+# BrokenSynapse VM deploy commands
+
+# 0) Snapshot first in VirtualBox.
+
+# 1) SSH in from Windows PowerShell:
+ssh bs@127.0.0.1 -p 2222
+
+# 2) Back up the current working server folder:
+cd ~
+mkdir -p backups
+if [ -d brokensynapse-server ]; then tar -czf backups/brokensynapse-server-before-vm-api-$(date +%F-%H%M%S).tar.gz brokensynapse-server; fi
+
+# 3) Replace the current GitHub Pages-style checkout with the new VM repo:
+if [ -d brokensynapse-server ]; then mv brokensynapse-server brokensynapse-server-old-$(date +%F-%H%M%S); fi
+git clone https://github.com/BrokenSynapse/BrokenSynapse.github.io.git brokensynapse-server
+cd brokensynapse-server
+
+# 4) Build/start Caddy + local API relay:
+docker compose up -d --build
+
+# 5) Import the Google Sheet into local SQLite:
+docker compose exec api npm run import:sheet
+
+# 6) Test local API and local website:
+curl http://localhost:8080/api/status
+curl http://localhost:8080/api/relay
+
+# 7) Test public through Cloudflare Tunnel from any browser:
+# https://brokensynapse.us/api/status
+# https://brokensynapse.us/lmi/
+
+# 8) If import fails, seed a dev login so the relay can still be tested:
+# docker compose exec api npm run seed:dev
+# tag: bs
+# hash: bs
+
+# 9) Later update from GitHub:
+# cd ~/brokensynapse-server
+# git pull
+# docker compose up -d --build
+
+# 10) Back up database:
+# mkdir -p backups
+# cp data/brokensynapse.sqlite backups/brokensynapse-$(date +%F-%H%M%S).sqlite
+# docker compose exec api npm run export:db

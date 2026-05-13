@@ -1,0 +1,17 @@
+{
+  "name": "brokensynapse-vm-api",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "import:sheet": "node scripts/import-gsheet.mjs",
+    "seed:dev": "node scripts/seed-dev.mjs",
+    "export:db": "node scripts/export-db.mjs"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "xlsx": "^0.18.5"
+  }
+}
