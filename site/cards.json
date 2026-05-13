@@ -1,0 +1,100 @@
+[
+  {
+    "name": "06 G6 V6",
+    "type": "Customer",
+    "art": "cards/art/06 G6 V6.png",
+    "base": "cards/card-base.png",
+    "finish": "normal"
+  },
+  {
+    "name": "Brad Insane",
+    "type": "Employee",
+    "art": "cards/art/Brad Insane.png",
+    "base": "cards/card-base.png",
+    "finish": "normal"
+  },
+  {
+    "name": "Brad Pyromaniac",
+    "type": "Employee",
+    "art": "cards/art/Brad Pyromaniac.png",
+    "base": "cards/card-base.png",
+    "finish": "holo"
+  },
+  {
+    "name": "Brad",
+    "type": "Employee",
+    "art": "cards/art/Brad.png",
+    "base": "cards/card-base.png",
+    "finish": "normal"
+  },
+  {
+    "name": "Chilli (He Sit)",
+    "type": "Employee",
+    "art": "cards/art/Chilli Sit.png",
+    "base": "cards/card-base.png",
+    "finish": "normal"
+  },
+  {
+    "name": "Dunson",
+    "type": "Customer",
+    "art": "cards/art/Dunson.png",
+    "base": "cards/card-base.png",
+    "finish": "normal"
+  },
+  {
+    "name": "Dunson Duo",
+    "type": "Customer",
+    "art": "cards/art/DunsonDuo.png",
+    "base": "cards/card-base.png",
+    "finish": "normal"
+  },
+  {
+    "name": "Frog Man",
+    "type": "Customer",
+    "art": "cards/art/FrogMan.png",
+    "base": "cards/card-base.png",
+    "finish": "normal"
+  },
+  {
+    "name": "Harmonica Man",
+    "type": "Customer",
+    "art": "cards/art/Harmonica Man.png",
+    "base": "cards/card-base.png",
+    "finish": "normal"
+  },
+  {
+    "name": "James Insane",
+    "type": "Employee",
+    "art": "cards/art/James Insane.png",
+    "base": "cards/card-base.png",
+    "finish": "normal"
+  },
+  {
+    "name": "James Retard",
+    "type": "Employee",
+    "art": "cards/art/James Retard.png",
+    "base": "cards/card-base.png",
+    "finish": "normal"
+  },
+  {
+    "name": "James",
+    "type": "Employee",
+    "art": "cards/art/James.png",
+    "base": "cards/card-base.png",
+    "finish": "normal"
+  },
+  {
+    "name": "Lock Britches",
+    "type": "Customer",
+    "art": "cards/art/LockBritches.png",
+    "base": "cards/card-base.png",
+    "finish": "normal"
+  },
+  {
+    "name": "Mike Glenn",
+    "type": "Commercial",
+    "art": "cards/art/Mike Glenn.png",
+    "base": "cards/card-base.png",
+    "finish": "normal"
+  }
+]

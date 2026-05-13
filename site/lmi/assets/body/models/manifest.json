@@ -1,0 +1,29 @@
+{
+  "version": "0.6.0-profile-mesh-db",
+  "models": [
+    {
+      "id": "human_base_3k",
+      "label": "Human Body Base Mesh 3k",
+      "sex": "male",
+      "path": "assets/body/models/HumanBodyBaseMesh3k.glb",
+      "vertices": 3090,
+      "triangles": 5392,
+      "rigged": true,
+      "skeleton": "shared_65_joint",
+      "notes": "Uploaded HumanBodyBaseMesh3k.glb"
+    },
+    {
+      "id": "female_base_3k",
+      "label": "Female Body Base Mesh 3k",
+      "sex": "female",
+      "path": "assets/body/models/FemaleBodyBaseMesh3k.glb",
+      "vertices": 3342,
+      "triangles": 5878,
+      "rigged": true,
+      "skeleton": "shared_65_joint",
+      "notes": "Uploaded FemaleBodyBaseMesh3k.glb"
+    }
+  ],
+  "profileStorage": "Google Apps Script sheet bodyProfiles via body.profile.get/body.profile.save/body.profile.meshSet",
+  "fallbackStorage": "localStorage when no relay is configured"
+}
