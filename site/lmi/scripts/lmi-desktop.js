@@ -8,6 +8,17 @@
   function setInstalled(ids){ localStorage.setItem(LMI_CONFIG.localKeys.installed,JSON.stringify(ids)); }
   function getLayout(){ try{return JSON.parse(localStorage.getItem(LMI_CONFIG.localKeys.layout)||'{}')}catch{return {}} }
   function saveLayout(o){ localStorage.setItem(LMI_CONFIG.localKeys.layout,JSON.stringify(o||{})); }
+  function hydrateLayoutFromRemote_(layout){
+    if(!layout || typeof layout !== 'object') return;
+    const next=getLayout();
+
+    Object.entries(layout).forEach(([id, value])=>{
+      if(!id || !value || typeof value !== 'object') return;
+      next[id]=Object.assign({}, next[id] || {}, value);
+    });
+
+    saveLayout(next);
+  }
   function themeVars(){
     try{
       const path = location.pathname.replace(/\/+$/,'').toLowerCase();
@@ -512,6 +523,7 @@ function renderDesktop(){
         if(data&&Array.isArray(data.apps)&&data.apps.length){
           runtime.desktopState=data;
           runtime.user=Object.assign({},runtime.user||{},data.user||{});
+          hydrateLayoutFromRemote_(data.layout);
 
           const dbShell=data.settings?.shellPrefs||data.user?.shellPrefs;
           if(dbShell){

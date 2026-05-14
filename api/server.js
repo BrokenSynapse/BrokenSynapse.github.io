@@ -663,7 +663,16 @@ function getDesktopState(payload, user) {
     const l = layout[k] || layout[id] || {};
     return { key: k, id, name: a.nm || a.name || id, path: a.path, icon: a.ico || a.icon || '□', description: a.desc || a.description || '', min: a.min, w: n_(l.w, n_(a.w, 900)), h: n_(l.h, n_(a.h, 620)), x: n_(l.x, 80), y: n_(l.y, 70), iconX: n_(l.iconX, n_(a.iconX, 0)), iconY: n_(l.iconY, n_(a.iconY, 0)) };
   }).filter(Boolean);
-  return { user: userFromCore_(c), apps, settings: { theme: c.th || 'Default', source: 'sheet', shellPrefs: shellPrefsFromCore_(c) } };
+  return {
+    user: userFromCore_(c),
+    apps,
+    layout,
+    settings: {
+      theme: c.th || 'Default',
+      source: 'sheet',
+      shellPrefs: shellPrefsFromCore_(c)
+    }
+  };
 }
 
 function saveUserWallpaper(payload, user) {
