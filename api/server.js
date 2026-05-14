@@ -929,17 +929,6 @@ function getModuleIndex() { return rows_('dictApps'); }
 function saveDesktopLayout(payload, user) {
   const c = coreFromUser_(user);
   const dict = appDict_();
-
-  const appId = String(payload.appId || payload.id || payload.key || '').trim();
-  if (!appId) throw new Error('Missing appId.');
-
-  const key = Object.keys(dict).find(k =>
-    String(k).toLowerCase() === appId.toLowerCase() ||
-    String(dict[k].id || '').toLowerCase() === appId.toLowerCase()
-  ) || appId;
-
-  const id = String((dict[key] && dict[key].id) || appId || key);
-
   const deskRows = rows_('desk');
   let row = deskRows.find(d => String(d.cid) === String(c.cid));
 
@@ -953,6 +942,58 @@ function saveDesktopLayout(payload, user) {
   }
 
   const layout = decodeLayout_(row.lay || '');
+
+  if (payload && payload.positions && typeof payload.positions === 'object') {
+    Object.entries(payload.positions).forEach(([rawId, pos]) => {
+      pos = pos || {};
+      const appId = String(rawId || '').trim();
+      if (!appId) return;
+
+      const key = Object.keys(dict).find(k =>
+        String(k).toLowerCase() === appId.toLowerCase() ||
+        String(dict[k].id || '').toLowerCase() === appId.toLowerCase()
+      ) || appId;
+
+      const id = String((dict[key] && dict[key].id) || appId || key);
+      const iconX = Number(pos.iconX ?? pos.x);
+      const iconY = Number(pos.iconY ?? pos.y);
+      const clean = {};
+
+      if (Number.isFinite(iconX)) clean.iconX = Math.round(iconX);
+      if (Number.isFinite(iconY)) clean.iconY = Math.round(iconY);
+
+      layout[key] = Object.assign({}, layout[key] || {}, clean);
+      layout[id] = Object.assign({}, layout[id] || {}, clean);
+    });
+
+    const lay = encodeLayout_(layout);
+    const changed = updateRows_(
+      'desk',
+      r => String(r.cid) === String(c.cid),
+      r => Object.assign(r, { lay })
+    );
+
+    appendSafe_('audit', ['id','t','cid','action','ok','blob'], {
+      id: 'a_' + Date.now(),
+      t: now_(),
+      cid: c.cid,
+      action: 'saveDesktopLayout.batch',
+      ok: changed ? 1 : 0,
+      blob: pack_({ count: Object.keys(payload.positions).length, lay })
+    });
+
+    return { saved: !!changed, batch: true, count: Object.keys(payload.positions).length, lay };
+  }
+
+  const appId = String(payload.appId || payload.id || payload.key || '').trim();
+  if (!appId) throw new Error('Missing appId.');
+
+  const key = Object.keys(dict).find(k =>
+    String(k).toLowerCase() === appId.toLowerCase() ||
+    String(dict[k].id || '').toLowerCase() === appId.toLowerCase()
+  ) || appId;
+
+  const id = String((dict[key] && dict[key].id) || appId || key);
   const incoming = payload.layout && typeof payload.layout === 'object' ? payload.layout : payload;
 
   const clean = {};

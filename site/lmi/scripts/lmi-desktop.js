@@ -1,5 +1,6 @@
 (async function(){
   const runtime=window.LMI_RUNTIME={user:null,session:null,apps:[],desktopState:null};
+  const pendingLayoutSaves=new Set();
   const $=id=>document.getElementById(id);
   const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
   function setStatus(txt,cls=''){ const el=$('loginStatus'); if(el){el.textContent=txt; el.className='login-status '+cls;} }
@@ -241,6 +242,11 @@
   function normalizeAssetUrl(src){ return window.LMI_NORMALIZE_ASSET_URL ? window.LMI_NORMALIZE_ASSET_URL(src) : String(src||'').trim(); }
   function applyWallpaper(user){ const desk=document.querySelector('.desktop'); const wp=normalizeAssetUrl(user?.wallpaper||user?.wp||localStorage.getItem('LMI_WALLPAPER')||''); if(wp){document.documentElement.style.setProperty('--wallpaper-url',`url("${wp}")`); desk?.classList.add('wallpapered')}else{document.documentElement.style.removeProperty('--wallpaper-url'); desk?.classList.remove('wallpapered')} }
   function setDesktopWallpaper(wp){ wp=normalizeAssetUrl(wp); if(wp){ localStorage.setItem('LMI_WALLPAPER',wp); } else { localStorage.removeItem('LMI_WALLPAPER'); } if(runtime.user){ runtime.user.wallpaper=wp; runtime.user.wp=wp; } applyWallpaper(runtime.user||{}); }
+  async function flushLayoutSaves(){
+    if(!pendingLayoutSaves.size) return;
+    const saves=[...pendingLayoutSaves];
+    await Promise.allSettled(saves);
+  }
   function saveShellPrefs(prefs){ return setShellPrefs(prefs,{persist:true}); }
   function previewShellPrefs(prefs){ return setShellPrefs(prefs,{persist:false}); }
 
@@ -261,7 +267,7 @@
       saveLayout(l);
 
       if(window.LMI_API?.callRelay && runtime.user){
-        LMI_API.callRelay('saveDesktopLayout', {
+        const savePromise=LMI_API.callRelay('saveDesktopLayout', {
           appId,
           key,
           id: appId,
@@ -269,11 +275,17 @@
         }, runtime.user).then(resp => {
           if(!resp?.ok) console.warn('saveDesktopLayout failed', appId, key, resp);
           else console.log('[LMI] saved desktop layout', appId, key, data);
+          return resp;
         }).catch(e => console.warn('saveDesktopLayout failed', appId, key, e));
+        pendingLayoutSaves.add(savePromise);
+        savePromise.finally(()=>pendingLayoutSaves.delete(savePromise));
+        return savePromise;
       } else {
         console.warn('[LMI] saveWindow could not call relay', {hasApi:!!window.LMI_API?.callRelay, user:runtime.user, id, data});
       }
+      return Promise.resolve(null);
     },
+    flushLayoutSaves,
     refreshApps:renderDesktop,
     getApps(){return runtime.apps||[];},
     getShellPrefs:readShellPrefs,
@@ -489,7 +501,7 @@ function renderDesktop(){
     search.addEventListener('input',()=>{ const q=search.value.trim().toLowerCase(); if(!q){results.innerHTML='<div class="start-empty">Type to find a module. This menu no longer dumps every app at you.</div>';return;} const hits=apps.filter(a=>(a.name+' '+a.description+' '+a.id).toLowerCase().includes(q)); results.innerHTML=hits.map(item).join('')||'<div class="start-empty">No modules match that search.</div>'; wire(results); });
     sm.querySelector('[data-act="home"]').onclick=()=>{document.querySelectorAll('.lmi-window').forEach(w=>w.classList.add('minimized')); sm.classList.add('hidden')};
     sm.querySelector('[data-act="layout"]').onclick=()=>{localStorage.removeItem(LMI_CONFIG.localKeys.layout); document.querySelectorAll('.lmi-window').forEach(w=>w.remove()); const tg=$('taskGroup'); if(tg)tg.innerHTML=''; renderDesktop(); sm.classList.add('hidden')};
-    sm.querySelector('[data-act="logout"]').onclick=()=>location.reload();
+    sm.querySelector('[data-act="logout"]').onclick=async()=>{await flushLayoutSaves(); location.reload();};
   }
   async function loadDesktopState(user){
     let manifest=(await loadManifest()).map(normalizeApp);
@@ -749,7 +761,7 @@ function renderDesktop(){
         sessionStorage.removeItem('LMI_PENDING_ACCOUNT_THEME');
       }catch{}
     }
-    applyTheme(); applyShellPrefs(); applyShellPrefs(); if(bootDesktopRouteFromHandoff_()) return; const saved=localStorage.getItem(LMI_CONFIG.localKeys.relayUrl)||LMI_API.DEFAULT_RELAY||'/api/relay'; $('relayUrl').value=saved; const last=LMI_AUTH.loadLastUser(); if(last?.tag) $('loginUsername').value=last.tag; $('saveRelay').onclick=()=>{ const url=$('relayUrl').value.trim(); if(url&&!LMI_API.isAllowedRelayUrl(url)){setStatus('Relay rejected: expected /api/relay or same-origin /api/*.','bad'); return;} if(url){LMI_API.setRelayUrl(url); setStatus('Relay endpoint cached locally.','good');}else{LMI_API.forgetRelayUrl(); setStatus('Relay link cleared.','warn');} }; $('forgetRelay').onclick=()=>{LMI_API.forgetRelayUrl(); $('relayUrl').value=''; setStatus('Relay endpoint reset to local /api/relay.','warn');}; const clearBtn=$('clearLocalCache'); if(clearBtn) clearBtn.onclick=async()=>{ if(!confirm('Clear all LMI cached data for this site? This removes relay link, saved layout, themes, currency preferences, and local session data.')) return; try{localStorage.clear(); sessionStorage.clear(); if(window.caches){ const keys=await caches.keys(); await Promise.all(keys.map(k=>caches.delete(k))); }}catch(e){} setStatus('Local site cache cleared. Reloading...','good'); setTimeout(()=>location.reload(),450); }; $('loginButton').onclick=async()=>{ try{ if($('relayUrl').value.trim()) LMI_API.setRelayUrl($('relayUrl').value.trim()); setStatus('Reading credentials...'); let result=await LMI_AUTH.login($('loginUsername').value,$('loginPassword').value); result=await attachShellPrefsBeforeDesktop_(result); setStatus('Credential accepted.','good'); enterDesktop(result.user,result.session); }catch(e){ setStatus(e.message||String(e),'bad'); } }; $('loginPassword').addEventListener('keydown',e=>{if(e.key==='Enter') $('loginButton').click();}); $('relayUrl').addEventListener('keydown',e=>{if(e.key==='Enter') $('saveRelay').click();}); $('startBtn')?.addEventListener('click',e=>{e.stopPropagation(); const sm=$('startMenu'); sm?.classList.toggle('hidden'); if(sm&&!sm.classList.contains('hidden')) setTimeout(()=>sm.querySelector('#startSearch')?.focus(),0);}); document.addEventListener('click',e=>{ if(!e.target.closest('.taskbar')) $('startMenu')?.classList.add('hidden'); }); }
+    applyTheme(); applyShellPrefs(); applyShellPrefs(); if(bootDesktopRouteFromHandoff_()) return; const saved=localStorage.getItem(LMI_CONFIG.localKeys.relayUrl)||LMI_API.DEFAULT_RELAY||'/api/relay'; $('relayUrl').value=saved; const last=LMI_AUTH.loadLastUser(); if(last?.tag) $('loginUsername').value=last.tag; $('saveRelay').onclick=()=>{ const url=$('relayUrl').value.trim(); if(url&&!LMI_API.isAllowedRelayUrl(url)){setStatus('Relay rejected: expected /api/relay or same-origin /api/*.','bad'); return;} if(url){LMI_API.setRelayUrl(url); setStatus('Relay endpoint cached locally.','good');}else{LMI_API.forgetRelayUrl(); setStatus('Relay link cleared.','warn');} }; $('forgetRelay').onclick=()=>{LMI_API.forgetRelayUrl(); $('relayUrl').value=''; setStatus('Relay endpoint reset to local /api/relay.','warn');}; const clearBtn=$('clearLocalCache'); if(clearBtn) clearBtn.onclick=async()=>{ if(!confirm('Clear all LMI cached data for this site? This removes relay link, saved layout, themes, currency preferences, and local session data.')) return; await flushLayoutSaves(); try{localStorage.clear(); sessionStorage.clear(); if(window.caches){ const keys=await caches.keys(); await Promise.all(keys.map(k=>caches.delete(k))); }}catch(e){} setStatus('Local site cache cleared. Reloading...','good'); setTimeout(()=>location.reload(),450); }; $('loginButton').onclick=async()=>{ try{ if($('relayUrl').value.trim()) LMI_API.setRelayUrl($('relayUrl').value.trim()); setStatus('Reading credentials...'); let result=await LMI_AUTH.login($('loginUsername').value,$('loginPassword').value); result=await attachShellPrefsBeforeDesktop_(result); setStatus('Credential accepted.','good'); enterDesktop(result.user,result.session); }catch(e){ setStatus(e.message||String(e),'bad'); } }; $('loginPassword').addEventListener('keydown',e=>{if(e.key==='Enter') $('loginButton').click();}); $('relayUrl').addEventListener('keydown',e=>{if(e.key==='Enter') $('saveRelay').click();}); $('startBtn')?.addEventListener('click',e=>{e.stopPropagation(); const sm=$('startMenu'); sm?.classList.toggle('hidden'); if(sm&&!sm.classList.contains('hidden')) setTimeout(()=>sm.querySelector('#startSearch')?.focus(),0);}); document.addEventListener('click',e=>{ if(!e.target.closest('.taskbar')) $('startMenu')?.classList.add('hidden'); }); }
   window.addEventListener('message',async event=>{ if(event.origin!==location.origin) return; const msg=event.data||{}; if(msg.type==='LMI_REQUEST_CONTEXT'){ event.source.postMessage({type:'LMI_CONTEXT',requestId:msg.requestId,context:{user:runtime.user,session:runtime.session,hasRelay:!!LMI_API.getRelayUrl(),apps:runtime.apps}},event.origin); } if(msg.type==='LMI_API_REQUEST'){ try{ const data=await LMI_API.callRelay(msg.action,msg.payload,runtime.user); event.source.postMessage({type:'LMI_API_RESPONSE',requestId:msg.requestId,ok:true,data},event.origin); } catch(e){ event.source.postMessage({type:'LMI_API_RESPONSE',requestId:msg.requestId,ok:false,error:e.message||String(e)},event.origin); } } if(msg.type==='LMI_SET_RELAY_URL'){ const url=String(msg.url||'').trim(); if(url&&!LMI_API.isAllowedRelayUrl(url)){event.source.postMessage({type:'LMI_RELAY_URL_STATUS',ok:false,message:'Rejected relay URL.'},event.origin);return;} if(url)LMI_API.setRelayUrl(url); else LMI_API.forgetRelayUrl(); event.source.postMessage({type:'LMI_RELAY_URL_STATUS',ok:true,message:url?'Relay saved locally.':'Relay cleared.'},event.origin); } if(msg.type==='LMI_REFRESH_APPS'){ refreshDesktopApps(); } if(msg.type==='LMI_SET_WALLPAPER'){ setDesktopWallpaper(msg.wallpaper||msg.wp||''); document.querySelectorAll('.win-frame').forEach(fr=>fr.contentWindow?.postMessage({type:'LMI_WALLPAPER_PATCH',wallpaper:msg.wallpaper||msg.wp||''},location.origin)); } if(msg.type==='LMI_THEME_PATCH'){ const liveThemeVars = msg.vars || {};
         sessionStorage.setItem('LMI_ACTIVE_ACCOUNT_THEME', JSON.stringify(liveThemeVars));
         localStorage.setItem('LMI_THEME_VARS', JSON.stringify(liveThemeVars));

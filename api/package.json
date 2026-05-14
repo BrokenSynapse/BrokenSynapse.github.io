@@ -8,7 +8,8 @@
     "seed:dev": "node scripts/seed-dev.mjs",
     "export:db": "node scripts/export-db.mjs",
     "demote-admins": "node scripts/demote-admins.mjs",
-    "normalize-core-assets": "node scripts/normalize-core-assets.mjs"
+    "normalize-core-assets": "node scripts/normalize-core-assets.mjs",
+    "inspect-desktop-layout": "node scripts/inspect-desktop-layout.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",
