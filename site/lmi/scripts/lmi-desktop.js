@@ -269,6 +269,8 @@
           if(!resp?.ok) console.warn('saveDesktopLayout failed', appId, key, resp);
           else console.log('[LMI] saved desktop layout', appId, key, data);
         }).catch(e => console.warn('saveDesktopLayout failed', appId, key, e));
+      } else {
+        console.warn('[LMI] saveWindow could not call relay', {hasApi:!!window.LMI_API?.callRelay, user:runtime.user, id, data});
       }
     },
     refreshApps:renderDesktop,
