@@ -56,3 +56,29 @@ cd ~/brokensynapse-server
 docker compose exec api npm run export:db
 cp data/brokensynapse.sqlite backups/brokensynapse-$(date +%F-%H%M%S).sqlite
 ```
+
+## Maintenance helpers
+
+Preview accidental admin cleanup:
+
+```bash
+docker compose exec api npm run demote-admins -- --keep=BrokenSynapse
+```
+
+Apply it after reviewing the preview:
+
+```bash
+docker compose exec api npm run demote-admins -- --keep=BrokenSynapse --apply
+```
+
+Preview core account asset path normalization:
+
+```bash
+docker compose exec api npm run normalize-core-assets
+```
+
+Apply it after reviewing the preview:
+
+```bash
+docker compose exec api npm run normalize-core-assets -- --apply
+```

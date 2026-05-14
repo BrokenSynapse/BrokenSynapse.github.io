@@ -113,6 +113,26 @@ function assetWebPath_(rel) {
   return rel ? `${ASSET_URL_PREFIX}/${rel}`.replace(/\/+/g, '/') : ASSET_URL_PREFIX;
 }
 
+function normalizeLmiAssetUrl_(value) {
+  let src = String(value || '').trim().replace(/\\/g, '/').replace(/^LMC:\s*/i, '');
+  if (!src || /^(default|none|null|x)$/i.test(src)) return '';
+
+  const githubAsset = src.match(/^https:\/\/github\.com\/BrokenSynapse\/BrokenSynapse\.github\.io\/blob\/main\/(?:site\/)?(?:lmi\/)?assets\/(.+?)\?raw=true$/i);
+  if (githubAsset) src = `/lmi/assets/${githubAsset[1]}`;
+
+  if (/^https?:\/\//i.test(src) || /^data:/i.test(src)) return src;
+
+  if (src.startsWith('/assets/')) src = '/lmi' + src;
+  if (src.startsWith('assets/')) src = '/lmi/' + src;
+  if (src.startsWith('lmi/assets/')) src = '/' + src;
+
+  if (src && !src.startsWith('/')) {
+    src = '/lmi/assets/' + src.replace(/^\/+/, '').replace(/^assets\//, '').replace(/^lmi\/assets\//, '');
+  }
+
+  return src.replace(/\/+/g, '/');
+}
+
 async function walkAssets_(dir, rel = '') {
   const files = [];
   const dirs = [];
@@ -199,6 +219,27 @@ function fileOpPath_(req, keys = ['path']) {
   return '';
 }
 
+function isCoreAssetRel_(rel) {
+  const p = String(rel || '').replace(/\\/g, '/').replace(/^\/+/, '');
+  return p === 'coreAssets' || p.startsWith('coreAssets/');
+}
+
+function requireCoreAssetAdmin_(req, res, rel) {
+  if (!isCoreAssetRel_(rel)) return true;
+  if (!ADMIN_TOKEN) {
+    res.status(403).json({ ok: false, error: 'coreAssets is read-only until ADMIN_TOKEN is configured.' });
+    return false;
+  }
+
+  const got = req.headers['x-admin-token'] || req.query.token;
+  if (got !== ADMIN_TOKEN) {
+    res.status(403).json({ ok: false, error: 'Admin token required for coreAssets changes.' });
+    return false;
+  }
+
+  return true;
+}
+
 app.get('/api/files/assets', async (req, res) => {
   try {
     await fs.mkdir(ASSET_ROOT, { recursive: true });
@@ -222,6 +263,7 @@ app.post('/api/files/upload', upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ ok: false, error: 'No file uploaded.' });
 
     const target = assetFullPath_(req.body.subdir || req.body.dir || '');
+    if (!requireCoreAssetAdmin_(req, res, target.rel)) return;
     await fs.mkdir(target.full, { recursive: true });
 
     const uploadExt = path.extname(req.file.originalname || '').toLowerCase();
@@ -263,6 +305,7 @@ app.post('/api/files/upload', upload.single('file'), async (req, res) => {
 app.post('/api/files/mkdir', express.text({ type: '*/*', limit: '2mb' }), async (req, res) => {
   try {
     const target = assetFullPath_(fileOpPath_(req, ['path']));
+    if (!requireCoreAssetAdmin_(req, res, target.rel)) return;
 
     if (!target.rel) {
       return res.status(400).json({ ok: false, error: 'Cannot create /lmi/assets root.' });
@@ -287,6 +330,7 @@ app.post('/api/files/mkdir', express.text({ type: '*/*', limit: '2mb' }), async 
 app.post('/api/files/delete', express.text({ type: '*/*', limit: '2mb' }), async (req, res) => {
   try {
     const target = assetFullPath_(fileOpPath_(req, ['path']));
+    if (!requireCoreAssetAdmin_(req, res, target.rel)) return;
 
     if (!target.rel) {
       return res.status(400).json({ ok: false, error: 'Cannot delete /lmi/assets root.' });
@@ -308,6 +352,7 @@ app.post('/api/files/move', express.text({ type: '*/*', limit: '2mb' }), async (
   try {
     const body = fileOpBody_(req);
     const src = assetFullPath_(body.src || body.from || '');
+    if (!requireCoreAssetAdmin_(req, res, src.rel)) return;
 
     if (!src.rel) {
       return res.status(400).json({ ok: false, error: 'Cannot move /lmi/assets root.' });
@@ -322,6 +367,7 @@ app.post('/api/files/move', express.text({ type: '*/*', limit: '2mb' }), async (
     }
 
     const dest = assetFullPath_(destInput);
+    if (!requireCoreAssetAdmin_(req, res, dest.rel)) return;
 
     if (!dest.rel) {
       return res.status(400).json({ ok: false, error: 'Invalid destination.' });
@@ -351,6 +397,7 @@ app.post('/api/files/write', express.text({ type: '*/*', limit: '2mb' }), async 
   try {
     const body = fileOpBody_(req);
     const target = assetFullPath_(fileOpPath_(req, ['path','dest']));
+    if (!requireCoreAssetAdmin_(req, res, target.rel)) return;
 
     if (!target.rel) {
       return res.status(400).json({ ok: false, error: 'Cannot write /lmi/assets root.' });
@@ -520,8 +567,8 @@ function userFromCore_(c) {
     displayName: c.cn || c.tag,
     access: c.al || 'User',
     theme: c.th || 'Default',
-    avatar: c.av || '',
-    wallpaper: c.wp || '',
+    avatar: normalizeLmiAssetUrl_(c.av || ''),
+    wallpaper: normalizeLmiAssetUrl_(c.wp || ''),
     bankAccountId: c.bid || '',
     currency: c.cur || 'LGD',
     occupation: c.occ || '',
@@ -621,7 +668,7 @@ function getDesktopState(payload, user) {
 
 function saveUserWallpaper(payload, user) {
   const c = coreFromUser_(user);
-  const wallpaper = String((payload && (payload.wallpaper || payload.wp || payload.url)) || '').trim();
+  const wallpaper = normalizeLmiAssetUrl_((payload && (payload.wallpaper || payload.wp || payload.url)) || '');
 
   // Store in the legacy/core user row as wp, because userFromCore_ already maps c.wp -> user.wallpaper.
   const changed = updateRows_('core', r => r.cid === c.cid, r => ({ wp: wallpaper }));
@@ -662,10 +709,10 @@ function userProfileSave(payload, user) {
   if (displayName !== undefined) patch.cn = String(displayName || '').trim();
 
   const avatar = firstDefined('avatar', 'av');
-  if (avatar !== undefined) patch.av = String(avatar || '').trim();
+  if (avatar !== undefined) patch.av = normalizeLmiAssetUrl_(avatar);
 
   const wallpaper = firstDefined('wallpaper', 'wp');
-  if (wallpaper !== undefined) patch.wp = String(wallpaper || '').trim();
+  if (wallpaper !== undefined) patch.wp = normalizeLmiAssetUrl_(wallpaper);
 
   const currency = firstDefined('currency', 'cur');
   if (currency !== undefined) patch.cur = String(currency || '').trim();
@@ -854,8 +901,8 @@ function updateCurrentAccount(payload, user) {
   if (patch.occupation !== undefined || patch.occ !== undefined) next.occ = String(patch.occupation ?? patch.occ ?? '').trim();
   if (patch.currency !== undefined || patch.cur !== undefined) next.cur = String(patch.currency ?? patch.cur ?? '').trim();
   if (patch.bankAccountId !== undefined || patch.bid !== undefined) next.bid = String(patch.bankAccountId ?? patch.bid ?? '').trim();
-  if (patch.avatar !== undefined || patch.av !== undefined) next.av = String(patch.avatar ?? patch.av ?? '').trim();
-  if (patch.wallpaper !== undefined || patch.wp !== undefined) next.wp = String(patch.wallpaper ?? patch.wp ?? '').trim();
+  if (patch.avatar !== undefined || patch.av !== undefined) next.av = normalizeLmiAssetUrl_(patch.avatar ?? patch.av);
+  if (patch.wallpaper !== undefined || patch.wp !== undefined) next.wp = normalizeLmiAssetUrl_(patch.wallpaper ?? patch.wp);
 
   if (patch.shellPrefs !== undefined || patch.prefs !== undefined) {
     const incoming = normalizeShellPrefs_(patch.shellPrefs ?? patch.prefs ?? {});
@@ -1486,7 +1533,7 @@ async function handleRelay(req, res){
   }
 }
 function requireAdmin(req,res,next){
-  if(!ADMIN_TOKEN) return next();
+  if(!ADMIN_TOKEN) return res.status(503).json({ok:false,error:'ADMIN_TOKEN is not configured'});
   const got=req.headers['x-admin-token'] || req.query.token;
   if(got !== ADMIN_TOKEN) return res.status(401).json({ok:false,error:'admin token required'});
   next();
@@ -1523,17 +1570,7 @@ function normalizeShellPrefs_(prefs) {
   }
 
   if (out.ambienceSrc !== undefined) {
-    let src = String(out.ambienceSrc || '').trim().replace(/\\/g, '/').replace(/^LMC:\s*/i, '');
-
-    if (src.startsWith('/assets/')) src = '/lmi' + src;
-
-    if (src && !src.startsWith('/')) {
-      src = '/lmi/assets/' + src
-        .replace(/^lmi\/assets\//, '')
-        .replace(/^assets\//, '');
-    }
-
-    out.ambienceSrc = src.replace(/\/+/g, '/');
+    out.ambienceSrc = normalizeLmiAssetUrl_(out.ambienceSrc);
   }
 
   return out;
@@ -1654,16 +1691,6 @@ async function createAccountForRelay_(req, res) {
       .replace(/[^A-Za-z0-9_-]/g, '')
       .toUpperCase();
 
-    const cleanPath = v => {
-      let p = String(v || '').trim().replace(/\\/g, '/').replace(/^LMC:\s*/i, '');
-      if (!p) return '';
-      if (p.startsWith('/assets/')) p = '/lmi' + p;
-      if (p && !p.startsWith('/')) {
-        p = '/lmi/assets/' + p.replace(/^lmi\/assets\//, '').replace(/^assets\//, '');
-      }
-      return p.replace(/\/+/g, '/');
-    };
-
     const tag = cleanTag(payload.tag || payload.employeeTag);
     const hash = String(payload.hash || payload.password || '').trim();
     const displayName = String(payload.displayName || payload.cn || payload.name || '').trim();
@@ -1682,8 +1709,8 @@ async function createAccountForRelay_(req, res) {
     const occupation = String(payload.occupation || payload.occ || '').trim();
     const currency = String(payload.currency || payload.cur || 'USD').trim() || 'USD';
     const balance = Number(payload.balance ?? payload.bal ?? 0);
-    const avatar = cleanPath(payload.avatar || payload.av || '');
-    const wallpaper = cleanPath(payload.wallpaper || payload.wp || '');
+    const avatar = normalizeLmiAssetUrl_(payload.avatar || payload.av || '');
+    const wallpaper = normalizeLmiAssetUrl_(payload.wallpaper || payload.wp || '');
 
     const shellPrefs = {
       iconSize: 60,

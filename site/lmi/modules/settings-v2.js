@@ -87,11 +87,13 @@
   }
 
   function normalizePath(src){
-    src = String(src || '').trim().replace(/\\/g,'/').replace(/^LMC:\s*/i,'');
-    if(!src) return '';
-    if(src.startsWith('/assets/')) src = '/lmi' + src;
-    if(!src.startsWith('/')) src = '/lmi/assets/' + src.replace(/^lmi\/assets\//,'').replace(/^assets\//,'');
-    return src.replace(/\/+/g,'/');
+    try{
+      return parent.window.LMI_NORMALIZE_ASSET_URL
+        ? parent.window.LMI_NORMALIZE_ASSET_URL(src)
+        : String(src || '').trim();
+    }catch{
+      return String(src || '').trim();
+    }
   }
 
   function setStatus(id,msg,good=true){

@@ -238,8 +238,9 @@
     return next;
   }
 
-  function applyWallpaper(user){ const desk=document.querySelector('.desktop'); const wp=user?.wallpaper||user?.wp||localStorage.getItem('LMI_WALLPAPER')||''; if(wp){document.documentElement.style.setProperty('--wallpaper-url',`url("${wp}")`); desk?.classList.add('wallpapered')}else desk?.classList.remove('wallpapered'); }
-  function setDesktopWallpaper(wp){ wp=String(wp||'').trim(); if(wp){ localStorage.setItem('LMI_WALLPAPER',wp); } else { localStorage.removeItem('LMI_WALLPAPER'); } if(runtime.user){ runtime.user.wallpaper=wp; runtime.user.wp=wp; } applyWallpaper(runtime.user||{}); }
+  function normalizeAssetUrl(src){ return window.LMI_NORMALIZE_ASSET_URL ? window.LMI_NORMALIZE_ASSET_URL(src) : String(src||'').trim(); }
+  function applyWallpaper(user){ const desk=document.querySelector('.desktop'); const wp=normalizeAssetUrl(user?.wallpaper||user?.wp||localStorage.getItem('LMI_WALLPAPER')||''); if(wp){document.documentElement.style.setProperty('--wallpaper-url',`url("${wp}")`); desk?.classList.add('wallpapered')}else{document.documentElement.style.removeProperty('--wallpaper-url'); desk?.classList.remove('wallpapered')} }
+  function setDesktopWallpaper(wp){ wp=normalizeAssetUrl(wp); if(wp){ localStorage.setItem('LMI_WALLPAPER',wp); } else { localStorage.removeItem('LMI_WALLPAPER'); } if(runtime.user){ runtime.user.wallpaper=wp; runtime.user.wp=wp; } applyWallpaper(runtime.user||{}); }
   function saveShellPrefs(prefs){ return setShellPrefs(prefs,{persist:true}); }
   function previewShellPrefs(prefs){ return setShellPrefs(prefs,{persist:false}); }
 
@@ -686,8 +687,8 @@ function renderDesktop(){
     user.tag = user.tag || user.employeeTag || '';
     user.displayName = user.displayName || user.cn || user.name || user.tag || '';
     user.access = user.access || user.al || 'User';
-    user.wallpaper = user.wallpaper || user.wp || '';
-    user.avatar = user.avatar || user.av || '';
+    user.wallpaper = normalizeAssetUrl(user.wallpaper || user.wp || '');
+    user.avatar = normalizeAssetUrl(user.avatar || user.av || '');
     user.bankAccountId = user.bankAccountId || user.bid || '';
     user.currency = user.currency || user.cur || '';
     user.occupation = user.occupation || user.occ || '';
