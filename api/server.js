@@ -952,18 +952,27 @@ function saveDesktopLayout(payload, user) {
 
   const layout = decodeLayout_(row.lay || '');
 
+  function applyLayoutPatch_(appId, patch) {
+    appId = String(appId || '').trim();
+    if (!appId) return null;
+
+    const key = Object.keys(dict).find(k =>
+      String(k).toLowerCase() === appId.toLowerCase() ||
+      String(dict[k].id || '').toLowerCase() === appId.toLowerCase()
+    ) || appId;
+
+    const id = String((dict[key] && dict[key].id) || appId || key);
+    const merged = Object.assign({}, layout[key] || {}, layout[id] || {}, patch || {});
+
+    layout[key] = Object.assign({}, merged);
+    layout[id] = Object.assign({}, merged);
+
+    return { key, id, layout: merged };
+  }
+
   if (payload && payload.positions && typeof payload.positions === 'object') {
     Object.entries(payload.positions).forEach(([rawId, pos]) => {
       pos = pos || {};
-      const appId = String(rawId || '').trim();
-      if (!appId) return;
-
-      const key = Object.keys(dict).find(k =>
-        String(k).toLowerCase() === appId.toLowerCase() ||
-        String(dict[k].id || '').toLowerCase() === appId.toLowerCase()
-      ) || appId;
-
-      const id = String((dict[key] && dict[key].id) || appId || key);
       const iconX = Number(pos.iconX ?? pos.x);
       const iconY = Number(pos.iconY ?? pos.y);
       const clean = {};
@@ -971,8 +980,7 @@ function saveDesktopLayout(payload, user) {
       if (Number.isFinite(iconX)) clean.iconX = Math.round(iconX);
       if (Number.isFinite(iconY)) clean.iconY = Math.round(iconY);
 
-      layout[key] = Object.assign({}, layout[key] || {}, clean);
-      layout[id] = Object.assign({}, layout[id] || {}, clean);
+      applyLayoutPatch_(rawId, clean);
     });
 
     const lay = encodeLayout_(layout);
@@ -997,12 +1005,6 @@ function saveDesktopLayout(payload, user) {
   const appId = String(payload.appId || payload.id || payload.key || '').trim();
   if (!appId) throw new Error('Missing appId.');
 
-  const key = Object.keys(dict).find(k =>
-    String(k).toLowerCase() === appId.toLowerCase() ||
-    String(dict[k].id || '').toLowerCase() === appId.toLowerCase()
-  ) || appId;
-
-  const id = String((dict[key] && dict[key].id) || appId || key);
   const incoming = payload.layout && typeof payload.layout === 'object' ? payload.layout : payload;
 
   const clean = {};
@@ -1013,8 +1015,9 @@ function saveDesktopLayout(payload, user) {
     }
   }
 
-  layout[key] = Object.assign({}, layout[key] || {}, clean);
-  layout[id] = Object.assign({}, layout[id] || {}, clean);
+  const applied = applyLayoutPatch_(appId, clean);
+  const key = applied.key;
+  const id = applied.id;
 
   const lay = encodeLayout_(layout);
 

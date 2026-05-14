@@ -19,6 +19,27 @@
 
     saveLayout(next);
   }
+  function hasIconCoords_(value){
+    return !!(
+      value &&
+      value.iconX !== undefined &&
+      value.iconY !== undefined &&
+      Number.isFinite(Number(value.iconX)) &&
+      Number.isFinite(Number(value.iconY))
+    );
+  }
+  function savedLayoutForApp_(layout, app){
+    const byKey=app.key ? layout[app.key] : null;
+    const byId=app.id ? layout[app.id] : null;
+
+    if(hasIconCoords_(byKey) && hasIconCoords_(byId)){
+      return Object.assign({}, byId, byKey);
+    }
+    if(hasIconCoords_(byKey)) return Object.assign({}, byId || {}, byKey);
+    if(hasIconCoords_(byId)) return Object.assign({}, byKey || {}, byId);
+
+    return Object.assign({}, byId || {}, byKey || {});
+  }
   function themeVars(){
     try{
       const path = location.pathname.replace(/\/+$/,'').toLowerCase();
@@ -379,7 +400,7 @@ function renderDesktop(){
     const cols=Math.max(1,Math.floor((bounds.width-20)/metrics.gridX));
 
     visibleApps().forEach((app,i)=>{
-      const saved=layout[app.id]||layout[app.key]||{};
+      const saved=savedLayoutForApp_(layout, app);
       const defaultX=(i%cols)*metrics.gridX+metrics.originX;
       const defaultY=Math.floor(i/cols)*metrics.gridY+metrics.originY;
 
