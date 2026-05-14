@@ -1,4 +1,8 @@
 import express from 'express';
+import multer from 'multer';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import crypto from 'node:crypto';
 import cors from 'cors';
 import zlib from 'zlib';
 import { rows as storeRows, ensureSheet as storeEnsureSheet, appendRow as storeAppendRow, updateRows as storeUpdateRows, listSheets, getSheet, putSheet, appendAudit } from './lib/store.js';
@@ -11,6 +15,379 @@ const memCache = new Map();
 app.use(cors());
 app.use(express.text({ type: ['text/*','application/json'], limit: '25mb' }));
 app.use(express.json({ type: 'application/json', limit: '25mb' }));
+
+
+
+// -----------------------------------------------------------------------------
+// FileExplorer.LMX asset endpoints
+// Jailed to /assets. This exposes only public site asset files.
+// -----------------------------------------------------------------------------
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 }
+});
+
+
+const ASSET_ROOT = process.env.ASSET_ROOT || '/site/lmi/assets';
+const ASSET_URL_PREFIX = process.env.ASSET_URL_PREFIX || '/lmi/assets';
+
+const ASSET_ALLOWED_EXT = new Set([
+  '.png','.jpg','.jpeg','.webp','.gif','.svg',
+  '.json','.txt','.csv','.md',
+  '.mp3','.wav','.ogg',
+  '.mp4','.webm',
+  '.glb','.gltf','.obj','.mtl',
+  '.pdf'
+]);
+
+function assetCleanPart_(part) {
+  return String(part || '')
+    .replace(/[^a-zA-Z0-9._() -]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 96);
+}
+
+function safeAssetName_(name, fallbackExt = '') {
+  const givenExt = path.extname(name || '').toLowerCase();
+  const fallback = String(fallbackExt || '').toLowerCase();
+  const ext = ASSET_ALLOWED_EXT.has(givenExt) ? givenExt : (ASSET_ALLOWED_EXT.has(fallback) ? fallback : '.bin');
+  const base = assetCleanPart_(path.basename(name || 'asset', givenExt)) || 'asset';
+  return { base, ext };
+}
+
+function assetRelFromInput_(input) {
+  let p = String(input || '').trim();
+
+  // Normalize slashes and remove fake drive prefix.
+  p = p.replace(/\\/g, '/');
+  p = p.replace(/^LMC:\s*/i, '');
+
+  // Strip query/hash if a copied URL-like path gets passed.
+  p = p.split('?')[0].split('#')[0];
+
+  // Normalize leading slashes.
+  p = p.replace(/^\/+/, '');
+
+  // Accepted roots:
+  //   /lmi/assets
+  //   lmi/assets
+  //   /assets
+  //   assets
+  // Everything after those roots becomes the relative jail path.
+  if (p === '' || p === 'lmi' || p === 'lmi/assets' || p === 'assets') {
+    return '';
+  }
+
+  if (p.startsWith('lmi/assets/')) {
+    p = p.slice('lmi/assets/'.length);
+  } else if (p.startsWith('assets/')) {
+    p = p.slice('assets/'.length);
+  }
+
+  // Clean each segment but preserve normal readable filenames.
+  const parts = p
+    .split('/')
+    .map(x => assetCleanPart_(x))
+    .filter(Boolean)
+    .filter(x => x !== '.' && x !== '..');
+
+  return parts.join('/');
+}
+
+function assetFullPath_(input) {
+  const rel = assetRelFromInput_(input);
+  const root = path.resolve(ASSET_ROOT);
+  const full = rel ? path.resolve(root, rel) : root;
+
+  if (full !== root && !full.startsWith(root + path.sep)) {
+    throw new Error('Asset path escaped jail.');
+  }
+
+  return { rel, full };
+}
+
+function assetWebPath_(rel) {
+  rel = assetRelFromInput_(rel);
+  return rel ? `${ASSET_URL_PREFIX}/${rel}`.replace(/\/+/g, '/') : ASSET_URL_PREFIX;
+}
+
+async function walkAssets_(dir, rel = '') {
+  const files = [];
+  const dirs = [];
+  const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
+
+  for (const ent of entries) {
+    const relPath = rel ? `${rel}/${ent.name}` : ent.name;
+    const full = path.join(dir, ent.name);
+    const stat = await fs.stat(full).catch(() => null);
+
+    if (ent.isDirectory()) {
+      dirs.push({
+        kind: 'dir',
+        name: ent.name,
+        relPath,
+        path: assetWebPath_(relPath),
+        size: 0,
+        updatedAt: stat ? stat.mtime.toISOString() : null
+      });
+
+      const nested = await walkAssets_(full, relPath);
+      files.push(...nested.files);
+      dirs.push(...nested.dirs);
+      continue;
+    }
+
+    const ext = path.extname(ent.name).toLowerCase();
+
+    if (typeof ASSET_ALLOWED_EXT !== 'undefined' && !ASSET_ALLOWED_EXT.has(ext)) {
+      continue;
+    }
+
+    files.push({
+      kind: 'file',
+      name: ent.name,
+      relPath,
+      path: assetWebPath_(relPath),
+      size: stat ? stat.size : 0,
+      updatedAt: stat ? stat.mtime.toISOString() : null,
+      type: ext.replace('.', '')
+    });
+  }
+
+  return {
+    files: files.sort((a, b) => a.relPath.localeCompare(b.relPath)),
+    dirs: dirs.sort((a, b) => a.relPath.localeCompare(b.relPath))
+  };
+}
+
+
+function fileOpBody_(req) {
+  let body = req.body;
+
+  if (Buffer.isBuffer(body)) {
+    body = body.toString('utf8');
+  }
+
+  if (typeof body === 'string') {
+    const txt = body.trim();
+    if (!txt) body = {};
+    else {
+      try {
+        body = JSON.parse(txt);
+      } catch {
+        body = { path: txt };
+      }
+    }
+  }
+
+  if (!body || typeof body !== 'object') body = {};
+
+  return Object.assign({}, req.query || {}, body);
+}
+
+function fileOpPath_(req, keys = ['path']) {
+  const body = fileOpBody_(req);
+
+  for (const k of keys) {
+    if (body[k] !== undefined && body[k] !== null && String(body[k]).trim() !== '') {
+      return String(body[k]);
+    }
+  }
+
+  return '';
+}
+
+app.get('/api/files/assets', async (req, res) => {
+  try {
+    await fs.mkdir(ASSET_ROOT, { recursive: true });
+    const walked = await walkAssets_(ASSET_ROOT);
+
+    res.json({
+      ok: true,
+      root: ASSET_URL_PREFIX,
+      assetRoot: ASSET_ROOT,
+      count: walked.files.length,
+      files: walked.files,
+      dirs: walked.dirs
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message || String(err) });
+  }
+});
+
+app.post('/api/files/upload', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ ok: false, error: 'No file uploaded.' });
+
+    const target = assetFullPath_(req.body.subdir || req.body.dir || '');
+    await fs.mkdir(target.full, { recursive: true });
+
+    const uploadExt = path.extname(req.file.originalname || '').toLowerCase();
+    const safe = safeAssetName_(req.body.filename || req.file.originalname, uploadExt);
+
+    let finalName = `${safe.base}${safe.ext}`;
+    let fullPath = path.join(target.full, finalName);
+
+    for (let i = 2; ; i++) {
+      try {
+        await fs.access(fullPath);
+        finalName = `${safe.base}-${i}${safe.ext}`;
+        fullPath = path.join(target.full, finalName);
+      } catch {
+        break;
+      }
+    }
+
+    await fs.writeFile(fullPath, req.file.buffer);
+
+    const relPath = target.rel ? `${target.rel}/${finalName}` : finalName;
+
+    res.json({
+      ok: true,
+      file: {
+        kind: 'file',
+        name: finalName,
+        path: assetWebPath_(relPath),
+        relPath,
+        size: req.file.size,
+        type: safe.ext.replace('.', '')
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message || String(err) });
+  }
+});
+
+app.post('/api/files/mkdir', express.text({ type: '*/*', limit: '2mb' }), async (req, res) => {
+  try {
+    const target = assetFullPath_(fileOpPath_(req, ['path']));
+
+    if (!target.rel) {
+      return res.status(400).json({ ok: false, error: 'Cannot create /lmi/assets root.' });
+    }
+
+    await fs.mkdir(target.full, { recursive: true });
+
+    res.json({
+      ok: true,
+      dir: {
+        kind: 'dir',
+        name: path.basename(target.rel),
+        relPath: target.rel,
+        path: assetWebPath_(target.rel)
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message || String(err) });
+  }
+});
+
+app.post('/api/files/delete', express.text({ type: '*/*', limit: '2mb' }), async (req, res) => {
+  try {
+    const target = assetFullPath_(fileOpPath_(req, ['path']));
+
+    if (!target.rel) {
+      return res.status(400).json({ ok: false, error: 'Cannot delete /lmi/assets root.' });
+    }
+
+    await fs.rm(target.full, { recursive: true, force: true });
+
+    res.json({
+      ok: true,
+      deleted: assetWebPath_(target.rel),
+      relPath: target.rel
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message || String(err) });
+  }
+});
+
+app.post('/api/files/move', express.text({ type: '*/*', limit: '2mb' }), async (req, res) => {
+  try {
+    const body = fileOpBody_(req);
+    const src = assetFullPath_(body.src || body.from || '');
+
+    if (!src.rel) {
+      return res.status(400).json({ ok: false, error: 'Cannot move /lmi/assets root.' });
+    }
+
+    let destInput = body.dest || body.to || '';
+
+    if (!destInput && (body.destDir || body.filename)) {
+      const name = assetCleanPart_(body.filename || path.basename(src.rel));
+      const dir = assetRelFromInput_(body.destDir || '');
+      destInput = dir ? `${dir}/${name}` : name;
+    }
+
+    const dest = assetFullPath_(destInput);
+
+    if (!dest.rel) {
+      return res.status(400).json({ ok: false, error: 'Invalid destination.' });
+    }
+
+    await fs.mkdir(path.dirname(dest.full), { recursive: true });
+
+    try {
+      await fs.access(dest.full);
+      return res.status(409).json({ ok: false, error: 'Destination already exists.' });
+    } catch {}
+
+    await fs.rename(src.full, dest.full);
+
+    res.json({
+      ok: true,
+      from: assetWebPath_(src.rel),
+      to: assetWebPath_(dest.rel),
+      relPath: dest.rel
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message || String(err) });
+  }
+});
+
+app.post('/api/files/write', express.text({ type: '*/*', limit: '2mb' }), async (req, res) => {
+  try {
+    const body = fileOpBody_(req);
+    const target = assetFullPath_(fileOpPath_(req, ['path','dest']));
+
+    if (!target.rel) {
+      return res.status(400).json({ ok: false, error: 'Cannot write /lmi/assets root.' });
+    }
+
+    const ext = path.extname(target.full).toLowerCase();
+    const allowedText = new Set(['.txt', '.json', '.md', '.csv', '.css', '.html', '.js', '.xml', '.yaml', '.yml']);
+
+    if (!allowedText.has(ext)) {
+      return res.status(400).json({ ok: false, error: 'Text file extension not allowed.' });
+    }
+
+    try {
+      await fs.access(target.full);
+      if (!body.overwrite) {
+        return res.status(409).json({ ok: false, error: 'File already exists.' });
+      }
+    } catch {}
+
+    await fs.mkdir(path.dirname(target.full), { recursive: true });
+    await fs.writeFile(target.full, String(body.content || ''), 'utf8');
+
+    res.json({
+      ok: true,
+      file: {
+        kind: 'file',
+        name: path.basename(target.rel),
+        path: assetWebPath_(target.rel),
+        relPath: target.rel,
+        type: ext.replace('.', '')
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message || String(err) });
+  }
+});
+
 
 function cache_(){
   return {
@@ -48,12 +425,67 @@ function moneyVal_(v) {
 
 function ping() { return { status: 'online', time: now_() }; }
 
+
 function getCoreByLogin_(tag, hash) {
-  tag = String(tag || '').trim(); hash = String(hash || '').trim();
-  const row = rows_('core').find(r => String(r.tag).toLowerCase() === tag.toLowerCase() && String(r.hash) === hash && String(r.st || 'Active').toLowerCase() !== 'disabled');
-  if (!row) throw new Error('Invalid employee tag or hash.');
+  tag = String(tag || '').trim();
+  hash = String(hash || '').trim();
+
+  if (!tag || !hash) {
+    throw new Error('Missing employee tag or hash.');
+  }
+
+  const row = rows_('core').find(r => {
+    const rowTag = String(r.tag || '').trim();
+    const rowHash = String(r.hash || '').trim();
+    const status = String(r.st || 'Active').trim().toLowerCase();
+
+    return rowTag.toLowerCase() === tag.toLowerCase()
+      && rowHash === hash
+      && status !== 'disabled'
+      && status !== 'inactive'
+      && status !== 'locked';
+  });
+
+  if (!row) {
+    throw new Error('Invalid employee tag or hash.');
+  }
+
   return row;
 }
+
+function login(payload) {
+  payload = payload || {};
+
+  const tag =
+    payload.tag ??
+    payload.employeeTag ??
+    payload.login ??
+    payload.username ??
+    payload.user ??
+    '';
+
+  const hash =
+    payload.hash ??
+    payload.loginHash ??
+    payload.password ??
+    payload.pass ??
+    payload.pw ??
+    '';
+
+  const c = getCoreByLogin_(tag, hash);
+
+  appendSafe_('audit', ['id','t','cid','action','ok','blob'], {
+    id: 'a_' + Date.now(),
+    t: now_(),
+    cid: c.cid,
+    action: 'login',
+    ok: 1,
+    blob: pack_({ tag: c.tag })
+  });
+
+  return { user: userFromCore_(c), session: { mode: 'relay', at: now_() } };
+}
+
 function coreFromUser_(user) {
   const cid = user && user.cid;
   const tag = user && user.tag;
@@ -61,13 +493,41 @@ function coreFromUser_(user) {
   if (tag) { const row = rows_('core').find(r => String(r.tag).toLowerCase() === String(tag).toLowerCase()); if (row) return row; }
   throw new Error('No authenticated LMI user context.');
 }
-function userFromCore_(c) {
-  return { cid: c.cid, tag: c.tag, displayName: c.cn || c.tag, access: c.al || 'User', theme: c.th || 'Default', avatar: c.av || '', wallpaper: c.wp || '', bankAccountId: c.bid || '', currency: c.cur || 'LGD' };
+
+function shellPrefsFromCore_(c) {
+  const raw = c && (c.shellPrefs ?? c.shp ?? c.shell ?? {});
+  if (!raw) return {};
+  if (typeof raw === 'object') return normalizeShellPrefs_(raw);
+  try {
+    return normalizeShellPrefs_(JSON.parse(String(raw)));
+  } catch {
+    return {};
+  }
 }
 
-function login(payload) {
-  const c = getCoreByLogin_(payload.tag || payload.employeeTag, payload.hash || payload.loginHash);
-  return { user: userFromCore_(c), session: { mode: 'relay', at: now_() } };
+
+function attachShellPrefsToUser_(u, c) {
+  if (!u || !c) return u;
+  u.cid = u.cid || c.cid || c.id || '';
+  u.shellPrefs = shellPrefsFromCore_(c);
+  return u;
+}
+
+function userFromCore_(c) {
+  const out = {
+    cid: c.cid,
+    tag: c.tag,
+    displayName: c.cn || c.tag,
+    access: c.al || 'User',
+    theme: c.th || 'Default',
+    avatar: c.av || '',
+    wallpaper: c.wp || '',
+    bankAccountId: c.bid || '',
+    currency: c.cur || 'LGD',
+    occupation: c.occ || '',
+    shellPrefs: shellPrefsFromCore_(c)
+  };
+  return attachShellPrefsToUser_(out, c);
 }
 
 function appDict_() {
@@ -75,20 +535,75 @@ function appDict_() {
   rows_('dictApps').forEach(a => out[String(a.k)] = a);
   return out;
 }
+
+function n_(v, fallback = 0) {
+  const x = Number(v);
+  return Number.isFinite(x) ? x : fallback;
+}
+
 function decodeLayout_(text) {
   if (!text) return {};
+
+  // Support accidental JSON layout written by older repair patches.
+  const raw = String(text || '').trim();
+  if (raw.startsWith('{')) {
+    try {
+      const obj = JSON.parse(raw);
+      const out = {};
+      Object.entries(obj || {}).forEach(([k, v]) => {
+        v = v || {};
+        out[k] = {
+          iconX: Number(v.iconX ?? v.x ?? 0),
+          iconY: Number(v.iconY ?? v.y ?? 0),
+          x: Number(v.x ?? 120),
+          y: Number(v.y ?? 90),
+          w: Number(v.w ?? 800),
+          h: Number(v.h ?? 600),
+          minimized: !!v.minimized,
+          maximized: !!v.maximized
+        };
+      });
+      return out;
+    } catch {}
+  }
+
   const out = {};
-  String(text).split(';').filter(Boolean).forEach(part => {
-    const bits = part.split(':'); if (bits.length < 2) return;
-    const a = bits[0]; const v = bits[1].split(',').map(x => Number(x || 0));
-    out[a] = { iconX: v[0], iconY: v[1], x: v[2], y: v[3], w: v[4], h: v[5], minimized: !!v[6], maximized: !!v[7] };
+  raw.split(';').filter(Boolean).forEach(part => {
+    const bits = part.split(':');
+    if (bits.length < 2) return;
+    const a = bits[0];
+    const v = bits[1].split(',').map(x => Number(x || 0));
+    out[a] = {
+      iconX: Number.isFinite(v[0]) ? v[0] : 0,
+      iconY: Number.isFinite(v[1]) ? v[1] : 0,
+      x: Number.isFinite(v[2]) ? v[2] : 120,
+      y: Number.isFinite(v[3]) ? v[3] : 90,
+      w: Number.isFinite(v[4]) ? v[4] : 800,
+      h: Number.isFinite(v[5]) ? v[5] : 600,
+      minimized: !!v[6],
+      maximized: !!v[7]
+    };
   });
   return out;
 }
+
+
 function encodeLayout_(layout) {
   return Object.keys(layout || {}).map(k => {
     const v = layout[k] || {};
-    return [k, [v.iconX || 40, v.iconY || 80, v.x || 120, v.y || 90, v.w || 800, v.h || 600, v.minimized ? 1 : 0, v.maximized ? 1 : 0].join(',')].join(':');
+    return [
+      k,
+      [
+        n_(v.iconX, 0),
+        n_(v.iconY, 0),
+        n_(v.x, 120),
+        n_(v.y, 90),
+        n_(v.w, 800),
+        n_(v.h, 600),
+        v.minimized ? 1 : 0,
+        v.maximized ? 1 : 0
+      ].join(',')
+    ].join(':');
   }).join(';');
 }
 function getDesktopState(payload, user) {
@@ -97,25 +612,340 @@ function getDesktopState(payload, user) {
   const dict = appDict_(); const layout = decodeLayout_(desk.lay);
   const apps = String(desk.apps || '').split(',').filter(Boolean).map(k => {
     const a = dict[k]; if (!a) return null;
-    const l = layout[k] || {};
-    return { key: k, id: a.id, name: a.nm, path: a.path, icon: a.ico, description: a.desc, min: a.min, w: Number(l.w || a.w || 900), h: Number(l.h || a.h || 620), x: Number(l.x || 80), y: Number(l.y || 70), iconX: Number(l.iconX || 40), iconY: Number(l.iconY || 80) };
+    const id = a.id || k;
+    const l = layout[k] || layout[id] || {};
+    return { key: k, id, name: a.nm || a.name || id, path: a.path, icon: a.ico || a.icon || '□', description: a.desc || a.description || '', min: a.min, w: n_(l.w, n_(a.w, 900)), h: n_(l.h, n_(a.h, 620)), x: n_(l.x, 80), y: n_(l.y, 70), iconX: n_(l.iconX, n_(a.iconX, 0)), iconY: n_(l.iconY, n_(a.iconY, 0)) };
   }).filter(Boolean);
-  return { user: userFromCore_(c), apps, settings: { theme: c.th || 'Default', source: 'sheet' } };
+  return { user: userFromCore_(c), apps, settings: { theme: c.th || 'Default', source: 'sheet', shellPrefs: shellPrefsFromCore_(c) } };
 }
+
+function saveUserWallpaper(payload, user) {
+  const c = coreFromUser_(user);
+  const wallpaper = String((payload && (payload.wallpaper || payload.wp || payload.url)) || '').trim();
+
+  // Store in the legacy/core user row as wp, because userFromCore_ already maps c.wp -> user.wallpaper.
+  const changed = updateRows_('core', r => r.cid === c.cid, r => ({ wp: wallpaper }));
+
+  appendSafe_('audit', ['id','t','cid','action','ok','blob'], {
+    id: 'a_' + Date.now(),
+    t: now_(),
+    cid: c.cid,
+    action: 'user.wallpaper.save',
+    ok: changed ? 1 : 0,
+    blob: pack_({ wallpaper })
+  });
+
+  return { saved: !!changed, wallpaper, wp: wallpaper };
+}
+
+
+function userProfileGet(payload, user) {
+  const c = coreFromUser_(user);
+  return { user: userFromCore_(c), raw: c };
+}
+
+function userProfileSave(payload, user) {
+  const c = coreFromUserStrict_(user);
+  const pl = payload || {};
+
+  const has = k => Object.prototype.hasOwnProperty.call(pl, k);
+  const firstDefined = (...keys) => {
+    for (const k of keys) {
+      if (has(k)) return pl[k];
+    }
+    return undefined;
+  };
+
+  const patch = {};
+
+  const displayName = firstDefined('displayName', 'cn', 'characterName', 'name');
+  if (displayName !== undefined) patch.cn = String(displayName || '').trim();
+
+  const avatar = firstDefined('avatar', 'av');
+  if (avatar !== undefined) patch.av = String(avatar || '').trim();
+
+  const wallpaper = firstDefined('wallpaper', 'wp');
+  if (wallpaper !== undefined) patch.wp = String(wallpaper || '').trim();
+
+  const currency = firstDefined('currency', 'cur');
+  if (currency !== undefined) patch.cur = String(currency || '').trim();
+
+  const occupation = firstDefined('occupation', 'occ');
+  if (occupation !== undefined) patch.occ = String(occupation || '').trim();
+
+  // Keep old behavior for display name only if nothing provided.
+  if (!Object.keys(patch).length) {
+    patch.cn = String(c.cn || c.tag || '').trim();
+  }
+
+  const changed = updateRows_('core', r => String(r.cid) === String(c.cid), r => Object.assign(r, patch));
+
+  appendSafe_('audit', ['id','t','cid','action','ok','blob'], {
+    id: 'a_' + Date.now(),
+    t: now_(),
+    cid: c.cid,
+    action: 'user.profile.save',
+    ok: changed ? 1 : 0,
+    blob: pack_(patch)
+  });
+
+  const fresh = coreFromUserStrict_({ cid: c.cid });
+  return { saved: !!changed, user: userFromCore_(fresh) };
+}
+
+
+function coreFromUserStrict_(user = {}) {
+  const rows = rows_('core');
+  const u = user || {};
+
+  const cid = String(u.cid || u.id || '').trim();
+  if (cid) {
+    const byCid = rows.find(r => String(r.cid || r.id || '').trim() === cid);
+    if (byCid) return byCid;
+  }
+
+  const tag = String(u.tag || u.username || '').trim().toLowerCase();
+  if (tag) {
+    const byTag = rows.find(r => String(r.tag || r.username || '').trim().toLowerCase() === tag);
+    if (byTag) return byTag;
+  }
+
+  const name = String(u.displayName || u.cn || u.name || '').trim().toLowerCase();
+  if (name) {
+    const byName = rows.find(r => String(r.cn || r.displayName || r.name || '').trim().toLowerCase() === name);
+    if (byName) return byName;
+  }
+
+  return coreFromUser_(user);
+}
+
+
+
+function resolveCoreForShell_(user = {}) {
+  const rows = rows_('core');
+  const u = user || {};
+
+  const cid = String(u.cid || u.id || '').trim();
+  if (cid) {
+    const hit = rows.find(r => String(r.cid || r.id || '').trim() === cid);
+    if (hit) return hit;
+  }
+
+  const tag = String(u.tag || u.username || '').trim().toLowerCase();
+  if (tag) {
+    const hit = rows.find(r => String(r.tag || r.username || '').trim().toLowerCase() === tag);
+    if (hit) return hit;
+  }
+
+  const name = String(u.displayName || u.cn || u.name || '').trim().toLowerCase();
+  if (name) {
+    const hit = rows.find(r => String(r.cn || r.displayName || r.name || '').trim().toLowerCase() === name);
+    if (hit) return hit;
+  }
+
+  return coreFromUser_(user);
+}
+
+
+
+function resolveCoreForShellPrefs_(user = {}) {
+  const rows = rows_('core');
+  const u = user || {};
+
+  const cid = String(u.cid || u.id || '').trim();
+  if (cid) {
+    const hit = rows.find(r => String(r.cid || r.id || '').trim() === cid);
+    if (hit) return hit;
+  }
+
+  const tag = String(u.tag || u.username || '').trim().toLowerCase();
+  if (tag) {
+    const hit = rows.find(r => String(r.tag || r.username || '').trim().toLowerCase() === tag);
+    if (hit) return hit;
+  }
+
+  const name = String(u.displayName || u.cn || u.name || '').trim().toLowerCase();
+  if (name) {
+    const hit = rows.find(r => String(r.cn || r.displayName || r.name || '').trim().toLowerCase() === name);
+    if (hit) return hit;
+  }
+
+  return coreFromUser_(u);
+}
+
+function parseShellPrefsDirect_(c = {}) {
+  const raw = c.shellPrefs ?? c.prefs ?? null;
+  if (!raw) return {};
+  if (typeof raw === 'object') return normalizeShellPrefs_(raw);
+  try { return normalizeShellPrefs_(JSON.parse(String(raw))); }
+  catch { return {}; }
+}
+
+
+function userShellGet(payload, user) {
+  const u = (payload && payload.user) || user || {};
+  const c = resolveCoreForShellPrefs_(u);
+  const prefs = parseShellPrefsDirect_(c);
+
+  return {
+    prefs,
+    shellPrefs: prefs,
+    cid: c.cid || c.id || '',
+    tag: c.tag || '',
+    user: userFromCore_(c)
+  };
+}
+
+
+function userShellSave(payload, user) {
+  const u = (payload && payload.user) || user || {};
+  const c = resolveCoreForShellPrefs_(u);
+
+  const incoming = normalizeShellPrefs_(
+    (payload && (payload.prefs || payload.shellPrefs)) || {}
+  );
+
+  const oldPrefs = parseShellPrefsDirect_(c);
+  const prefs = normalizeShellPrefs_(Object.assign({}, oldPrefs, incoming));
+
+  const cid = String(c.cid || c.id || '').trim();
+
+  const changed = updateRows_(
+    'core',
+    r => String(r.cid || r.id || '').trim() === cid,
+    r => Object.assign(r, { shellPrefs: JSON.stringify(prefs) })
+  );
+
+  appendSafe_('audit', ['id','t','cid','action','ok','blob'], {
+    id: 'a_' + Date.now(),
+    t: now_(),
+    cid,
+    action: 'user.shell.save',
+    ok: changed ? 1 : 0,
+    blob: pack_({ shellPrefs: prefs })
+  });
+
+  return {
+    saved: !!changed,
+    prefs,
+    shellPrefs: prefs,
+    cid,
+    tag: c.tag || ''
+  };
+}
+
+
+
+function getCurrentAccount(payload, user) {
+  const c = coreFromUserStrict_((payload && payload.user) || user || {});
+  return { user: userFromCore_(c), raw: c };
+}
+
+function updateCurrentAccount(payload, user) {
+  const c = coreFromUserStrict_((payload && payload.user) || user || {});
+  const patch = (payload && payload.patch) || payload || {};
+  const next = {};
+
+  if (patch.displayName !== undefined || patch.cn !== undefined) next.cn = String(patch.displayName ?? patch.cn ?? '').trim();
+  if (patch.tag !== undefined) next.tag = String(patch.tag || '').trim();
+  if (patch.hash !== undefined) next.hash = String(patch.hash || '');
+  if (patch.access !== undefined || patch.al !== undefined) next.al = String(patch.access ?? patch.al ?? '').trim();
+  if (patch.status !== undefined || patch.st !== undefined) next.st = String(patch.status ?? patch.st ?? '').trim();
+  if (patch.occupation !== undefined || patch.occ !== undefined) next.occ = String(patch.occupation ?? patch.occ ?? '').trim();
+  if (patch.currency !== undefined || patch.cur !== undefined) next.cur = String(patch.currency ?? patch.cur ?? '').trim();
+  if (patch.bankAccountId !== undefined || patch.bid !== undefined) next.bid = String(patch.bankAccountId ?? patch.bid ?? '').trim();
+  if (patch.avatar !== undefined || patch.av !== undefined) next.av = String(patch.avatar ?? patch.av ?? '').trim();
+  if (patch.wallpaper !== undefined || patch.wp !== undefined) next.wp = String(patch.wallpaper ?? patch.wp ?? '').trim();
+
+  if (patch.shellPrefs !== undefined || patch.prefs !== undefined) {
+    const incoming = normalizeShellPrefs_(patch.shellPrefs ?? patch.prefs ?? {});
+    const old = shellPrefsFromCore_(c);
+    next.shellPrefs = JSON.stringify(Object.assign({}, old, incoming));
+  }
+
+  const changed = updateRows_('core', r => String(r.cid) === String(c.cid), r => next);
+
+  appendSafe_('audit', ['id','t','cid','action','ok','blob'], {
+    id: 'a_' + Date.now(),
+    t: now_(),
+    cid: c.cid,
+    action: 'updateCurrentAccount',
+    ok: changed ? 1 : 0,
+    blob: pack_(next)
+  });
+
+  const fresh = coreFromUserStrict_({ cid: c.cid });
+  return { saved: !!changed, user: userFromCore_(fresh), raw: fresh };
+}
+
 function getModuleIndex() { return rows_('dictApps'); }
 function saveDesktopLayout(payload, user) {
   const c = coreFromUser_(user);
   const dict = appDict_();
-  const appId = payload.appId;
-  const key = Object.keys(dict).find(k => dict[k].id === appId || k === appId);
-  if (!key) throw new Error('Unknown app: ' + appId);
-  const changed = updateRows_('desk', r => r.cid === c.cid, r => {
-    const lay = decodeLayout_(r.lay);
-    lay[key] = Object.assign({}, lay[key] || {}, payload.layout || {});
-    return { lay: encodeLayout_(lay) };
+
+  const appId = String(payload.appId || payload.id || payload.key || '').trim();
+  if (!appId) throw new Error('Missing appId.');
+
+  const key = Object.keys(dict).find(k =>
+    String(k).toLowerCase() === appId.toLowerCase() ||
+    String(dict[k].id || '').toLowerCase() === appId.toLowerCase()
+  ) || appId;
+
+  const id = String((dict[key] && dict[key].id) || appId || key);
+
+  const deskRows = rows_('desk');
+  let row = deskRows.find(d => String(d.cid) === String(c.cid));
+
+  if (!row) {
+    row = {
+      cid: c.cid,
+      apps: Object.keys(dict).join(','),
+      lay: ''
+    };
+    appendSafe_('desk', ['cid','apps','lay'], row);
+  }
+
+  const layout = decodeLayout_(row.lay || '');
+  const incoming = payload.layout && typeof payload.layout === 'object' ? payload.layout : payload;
+
+  const clean = {};
+  for (const k of ['x','y','w','h','iconX','iconY','maximized']) {
+    if (incoming[k] !== undefined && incoming[k] !== null && incoming[k] !== '') {
+      const n = Number(incoming[k]);
+      clean[k] = Number.isFinite(n) ? Math.round(n) : incoming[k];
+    }
+  }
+
+  layout[key] = Object.assign({}, layout[key] || {}, clean);
+  layout[id] = Object.assign({}, layout[id] || {}, clean);
+
+  const lay = encodeLayout_(layout);
+
+  const changed = updateRows_(
+    'desk',
+    r => String(r.cid) === String(c.cid),
+    r => Object.assign(r, { lay })
+  );
+
+  appendSafe_('audit', ['id','t','cid','action','ok','blob'], {
+    id: 'a_' + Date.now(),
+    t: now_(),
+    cid: c.cid,
+    action: 'saveDesktopLayout',
+    ok: changed ? 1 : 0,
+    blob: pack_({ appId, key, id, layout: clean, lay })
   });
-  return { changed };
+
+  return {
+    saved: !!changed,
+    appId,
+    key,
+    id,
+    layout: clean,
+    lay
+  };
 }
+
 function installApp(payload, user) { return toggleApp_(payload, user, true); }
 function uninstallApp(payload, user) { return toggleApp_(payload, user, false); }
 function toggleApp_(payload, user, install) {
@@ -301,10 +1131,6 @@ function bodyBundle(payload, user) {
 }
 
 function boolish_(v) { return v === true || String(v).toLowerCase() === 'true' || String(v) === '1' || String(v).toLowerCase() === 'yes'; }
-function n_(v) { var x = Number(v || 0); return isNaN(x) ? 0 : x; }
-function pharmaSheet_() {
-  return ensureSheet_('pharmaItems', ['pid','sku','nm','company','category','publicOutletTier','form','quantity','labelUse','priceCents','buyable','subscription','purityGrade','workUtility','shiftCompatibility','dependency','tolerance','withdrawal','abuseLoop','supportNeed','requiredRatings','disclaimers','warnings','effects','sideEffects','interactions','tags','structure','img','desc']);
-}
 function pharmaNormalize_(r) {
   var price = pick_(r, ['priceCents','cents','Price Cents','price','Price'], '') !== '' ? moneyVal_(pick_(r, ['priceCents','cents','Price Cents','price','Price'], 0)) : 0;
   if (pick_(r, ['priceCents','cents','Price Cents'], '') !== '' && price < 100 && Number(pick_(r, ['priceCents','cents','Price Cents'], 0)) > 100) price = Number(pick_(r, ['priceCents','cents','Price Cents'], 0)) / 100;
@@ -460,7 +1286,94 @@ function currencyGold(payload, user) {
   return out;
 }
 
+
+// -----------------------------------------------------------------------------
+// FORCED ROUTE OVERRIDE: shell prefs must resolve by cid/tag/name, not stale row.
+// This is assigned directly onto routes after routes is created.
+// -----------------------------------------------------------------------------
+function forcedResolveCoreForShellPrefs_(user = {}) {
+  const rows = rows_('core');
+  const u = user || {};
+
+  const cid = String(u.cid || u.id || '').trim();
+  if (cid) {
+    const hit = rows.find(r => String(r.cid || r.id || '').trim() === cid);
+    if (hit) return hit;
+  }
+
+  const tag = String(u.tag || u.username || '').trim().toLowerCase();
+  if (tag) {
+    const hit = rows.find(r => String(r.tag || r.username || '').trim().toLowerCase() === tag);
+    if (hit) return hit;
+  }
+
+  const name = String(u.displayName || u.cn || u.name || '').trim().toLowerCase();
+  if (name) {
+    const hit = rows.find(r => String(r.cn || r.displayName || r.name || '').trim().toLowerCase() === name);
+    if (hit) return hit;
+  }
+
+  return coreFromUser_(u);
+}
+
+function forcedParseShellPrefs_(c = {}) {
+  const raw = c.shellPrefs ?? c.prefs ?? null;
+  if (!raw) return {};
+  if (typeof raw === 'object') return normalizeShellPrefs_(raw);
+  try { return normalizeShellPrefs_(JSON.parse(String(raw))); }
+  catch { return {}; }
+}
+
+function forcedUserShellGet_(payload = {}, user = {}) {
+  const c = forcedResolveCoreForShellPrefs_((payload && payload.user) || user || {});
+  const prefs = forcedParseShellPrefs_(c);
+
+  return {
+    prefs,
+    shellPrefs: prefs,
+    cid: c.cid || c.id || '',
+    tag: c.tag || '',
+    user: userFromCore_(c)
+  };
+}
+
+function forcedUserShellSave_(payload = {}, user = {}) {
+  const c = forcedResolveCoreForShellPrefs_((payload && payload.user) || user || {});
+  const oldPrefs = forcedParseShellPrefs_(c);
+  const incoming = normalizeShellPrefs_((payload && (payload.prefs || payload.shellPrefs)) || {});
+  const prefs = normalizeShellPrefs_(Object.assign({}, oldPrefs, incoming));
+  const cid = String(c.cid || c.id || '').trim();
+
+  const changed = updateRows_(
+    'core',
+    r => String(r.cid || r.id || '').trim() === cid,
+    r => Object.assign(r, { shellPrefs: JSON.stringify(prefs) })
+  );
+
+  appendSafe_('audit', ['id','t','cid','action','ok','blob'], {
+    id: 'a_' + Date.now(),
+    t: now_(),
+    cid,
+    action: 'user.shell.save.forced',
+    ok: changed ? 1 : 0,
+    blob: pack_({ shellPrefs: prefs })
+  });
+
+  return {
+    saved: !!changed,
+    prefs,
+    shellPrefs: prefs,
+    cid,
+    tag: c.tag || ''
+  };
+}
+
+
 const routes = {
+  getCurrentAccount,
+  updateCurrentAccount,
+  'account.current.get': getCurrentAccount,
+  'account.current.update': updateCurrentAccount,
   ping,
   login,
   getDesktopState,
@@ -495,11 +1408,32 @@ const routes = {
   'data.append': dataAppend,
   'theme.list': themeList,
   'theme.save': themeSave,
+  'user.wallpaper.save': saveUserWallpaper,
+  'user.profile.get': userProfileGet,
+  'user.profile.save': userProfileSave,
+  'user.shell.get': userShellGet,
+  'user.shell.save': userShellSave,
+  getShellPrefs: userShellGet,
+  saveShellPrefs: userShellSave,
+  writeShellPrefs: userShellSave,
+  setShellPrefs: userShellSave,
+  'desktop.layout.save': saveDesktopLayout,
+
   'work.jobs': workJobs,
   'work.cashOut': workCashOut,
   createProfile,
   packTest
 };
+
+// Forced shell pref route overrides. These must run after const routes is created.
+routes['user.shell.get'] = forcedUserShellGet_;
+routes['user.shell.save'] = forcedUserShellSave_;
+routes.getShellPrefs = forcedUserShellGet_;
+routes.saveShellPrefs = forcedUserShellSave_;
+routes.writeShellPrefs = forcedUserShellSave_;
+routes.setShellPrefs = forcedUserShellSave_;
+
+
 
 function parseBody(req){
   if(typeof req.body === 'object' && req.body) return req.body;
@@ -513,6 +1447,37 @@ async function handleRelay(req, res){
     const action=String(body.action||'').trim();
     const payload=body.payload||{};
     const user=body.user||{};
+
+    if (action === 'saveShellPrefs' || action === 'writeShellPrefs' || action === 'setShellPrefs') {
+      return saveShellPrefsForRelay_(req, res);
+    }
+
+
+    if (action === 'getShellPrefs' || action === 'loadShellPrefs' || action === 'readShellPrefs') {
+      return getShellPrefsForRelay_(req, res);
+    }
+
+
+    if (action === 'createAccount' || action === 'createUser' || action === 'provisionAccount') {
+      return createAccountForRelay_(req, res);
+    }
+
+
+    if (action === 'listAccountOptions' || action === 'getAccountOptions') {
+      return listAccountOptionsForRelay_(req, res);
+    }
+
+
+    if (action === 'getCurrentAccount' || action === 'account.current.get') {
+      const data = await getCurrentAccount(payload, user, body);
+      return res.json({ ok: true, data });
+    }
+
+    if (action === 'updateCurrentAccount' || action === 'account.current.update') {
+      const data = await updateCurrentAccount(payload, user, body);
+      return res.json({ ok: true, data });
+    }
+
     if(!routes[action]) throw new Error('Unknown action: '+action);
     const data=await routes[action](payload, user, body);
     res.json({ok:true,data});
@@ -529,6 +1494,934 @@ function requireAdmin(req,res,next){
 
 app.get('/api/status', (req,res)=>res.json({ok:true,name:'BrokenSynapse VM Relay',status:'online',version:'1.0.0',sheets:listSheets()}));
 app.get('/api/relay', (req,res)=>res.json({ok:true,data:{name:'BrokenSynapse VM Relay',status:'online',version:'1.0.0'}}));
+
+// -----------------------------------------------------------------------------
+// Settings.LMX shell preference relay action
+// Saves account-tied desktop/settings prefs such as icon size, grid snap,
+// ambienceSrc, ambienceVolume, ambienceEnabled, etc.
+// -----------------------------------------------------------------------------
+function normalizeShellPrefs_(prefs) {
+  if (!prefs || typeof prefs !== 'object') return {};
+
+  const out = { ...prefs };
+
+  if (out.iconSize !== undefined) {
+    out.iconSize = Math.max(40, Math.min(120, Number(out.iconSize) || 60));
+  }
+
+  if (out.gridSnap !== undefined) {
+    out.gridSnap = !!out.gridSnap;
+  }
+
+  if (out.ambienceVolume !== undefined) {
+    const n = Number(out.ambienceVolume);
+    out.ambienceVolume = Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0.35;
+  }
+
+  if (out.ambienceEnabled !== undefined) {
+    out.ambienceEnabled = !!out.ambienceEnabled;
+  }
+
+  if (out.ambienceSrc !== undefined) {
+    let src = String(out.ambienceSrc || '').trim().replace(/\\/g, '/').replace(/^LMC:\s*/i, '');
+
+    if (src.startsWith('/assets/')) src = '/lmi' + src;
+
+    if (src && !src.startsWith('/')) {
+      src = '/lmi/assets/' + src
+        .replace(/^lmi\/assets\//, '')
+        .replace(/^assets\//, '');
+    }
+
+    out.ambienceSrc = src.replace(/\/+/g, '/');
+  }
+
+  return out;
+}
+
+
+
+
+async function listAccountOptionsForRelay_(req, res) {
+  try {
+    const { execFile } = await import('node:child_process');
+
+    const py = `
+import sys, json, sqlite3, os
+
+db_candidates = [
+    os.environ.get("SQLITE_DB", ""),
+    os.environ.get("DB_PATH", ""),
+    "/data/brokensynapse.sqlite",
+    "/app/data/brokensynapse.sqlite",
+    "data/brokensynapse.sqlite",
+]
+
+db = None
+for cand in db_candidates:
+    if cand and os.path.exists(cand):
+        db = cand
+        break
+
+if not db:
+    print(json.dumps({"ok": False, "error": "SQLite database not found.", "checked": db_candidates}))
+    sys.exit(0)
+
+con = sqlite3.connect(db)
+cur = con.cursor()
+row = cur.execute("select rows_json from sheets where name='core'").fetchone()
+rows = json.loads(row[0]) if row and row[0] else []
+
+occupations = []
+access_levels = []
+statuses = []
+currencies = []
+
+for r in rows:
+    occ = str(r.get("occ") or r.get("occupation") or "").strip()
+    al = str(r.get("al") or r.get("access") or "").strip()
+    st = str(r.get("st") or r.get("status") or "").strip()
+    cur = str(r.get("cur") or r.get("currency") or "").strip()
+
+    if occ: occupations.append(occ)
+    if al: access_levels.append(al)
+    if st: statuses.append(st)
+    if cur: currencies.append(cur)
+
+def uniq(xs):
+    seen = set()
+    out = []
+    for x in xs:
+        key = x.lower()
+        if key not in seen:
+            seen.add(key)
+            out.append(x)
+    return sorted(out, key=lambda x: x.lower())
+
+print(json.dumps({
+    "ok": True,
+    "data": {
+        "occupations": uniq(occupations),
+        "accessLevels": uniq(access_levels),
+        "statuses": uniq(statuses),
+        "currencies": uniq(currencies),
+        "db": db
+    }
+}))
+`;
+
+    const result = await new Promise((resolve) => {
+      execFile('python3', ['-c', py], { timeout: 8000 }, (err, stdout, stderr) => {
+        if (err) {
+          resolve({ ok: false, error: err.message || String(err), stderr });
+          return;
+        }
+
+        try {
+          resolve(JSON.parse(String(stdout || '{}')));
+        } catch {
+          resolve({ ok: false, error: 'Bad Python JSON response.', stdout, stderr });
+        }
+      });
+    });
+
+    if (!result.ok) return res.status(400).json(result);
+    return res.json(result);
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message || String(err) });
+  }
+}
+
+
+async function createAccountForRelay_(req, res) {
+  try {
+    let body = req && req.body !== undefined ? req.body : {};
+
+    if (Buffer.isBuffer(body)) body = body.toString('utf8');
+
+    if (typeof body === 'string') {
+      try { body = JSON.parse(body || '{}'); }
+      catch { body = {}; }
+    }
+
+    if (!body || typeof body !== 'object') body = {};
+
+    const payload = body.payload && typeof body.payload === 'object' ? body.payload : body;
+
+    const cleanTag = v => String(v || '')
+      .trim()
+      .replace(/\s+/g, '_')
+      .replace(/[^A-Za-z0-9_-]/g, '')
+      .toUpperCase();
+
+    const cleanPath = v => {
+      let p = String(v || '').trim().replace(/\\/g, '/').replace(/^LMC:\s*/i, '');
+      if (!p) return '';
+      if (p.startsWith('/assets/')) p = '/lmi' + p;
+      if (p && !p.startsWith('/')) {
+        p = '/lmi/assets/' + p.replace(/^lmi\/assets\//, '').replace(/^assets\//, '');
+      }
+      return p.replace(/\/+/g, '/');
+    };
+
+    const tag = cleanTag(payload.tag || payload.employeeTag);
+    const hash = String(payload.hash || payload.password || '').trim();
+    const displayName = String(payload.displayName || payload.cn || payload.name || '').trim();
+
+    const bankAccountId = String(payload.bankAccountId || payload.bid || '').trim();
+
+    if (!tag || !hash || !displayName || !bankAccountId) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Employee tag, hash, display name, and bank account ID are required.'
+      });
+    }
+
+    const access = String(payload.access || payload.al || 'User').trim() || 'User';
+    const status = String(payload.status || payload.st || 'Active').trim() || 'Active';
+    const occupation = String(payload.occupation || payload.occ || '').trim();
+    const currency = String(payload.currency || payload.cur || 'USD').trim() || 'USD';
+    const balance = Number(payload.balance ?? payload.bal ?? 0);
+    const avatar = cleanPath(payload.avatar || payload.av || '');
+    const wallpaper = cleanPath(payload.wallpaper || payload.wp || '');
+
+    const shellPrefs = {
+      iconSize: 60,
+      gridSnap: true
+    };
+
+    const { execFile } = await import('node:child_process');
+
+    const py = `
+import sys, json, sqlite3, os, time, re
+
+request = json.loads(sys.stdin.read() or "{}")
+
+db_candidates = [
+    os.environ.get("SQLITE_DB", ""),
+    os.environ.get("DB_PATH", ""),
+    "/data/brokensynapse.sqlite",
+    "/app/data/brokensynapse.sqlite",
+    "data/brokensynapse.sqlite",
+]
+
+db = None
+for cand in db_candidates:
+    if cand and os.path.exists(cand):
+        db = cand
+        break
+
+if not db:
+    print(json.dumps({"ok": False, "error": "SQLite database not found.", "checked": db_candidates}))
+    sys.exit(0)
+
+con = sqlite3.connect(db)
+cur = con.cursor()
+
+row = cur.execute("select rows_json from sheets where name='core'").fetchone()
+rows = json.loads(row[0]) if row and row[0] else []
+
+tag = request["tag"].upper()
+display_name = request["displayName"]
+
+for r in rows:
+    if str(r.get("tag","")).upper() == tag:
+        print(json.dumps({"ok": False, "error": "Employee tag already exists."}))
+        sys.exit(0)
+
+existing_cids = {str(r.get("cid","")) for r in rows}
+base = "c_" + re.sub(r"[^a-z0-9_]+", "_", tag.lower()).strip("_")
+cid = base or ("c_user_" + str(int(time.time())))
+
+if cid in existing_cids:
+    n = 2
+    while f"{cid}_{n}" in existing_cids:
+        n += 1
+    cid = f"{cid}_{n}"
+
+new_row = {
+    "cid": cid,
+    "tag": tag,
+    "hash": request["hash"],
+    "cn": display_name,
+    "al": request["access"],
+    "st": request["status"],
+    "occ": request.get("occupation",""),
+    "cur": request.get("currency","USD"),
+    "bal": request.get("balance",0),
+    "bid": request.get("bankAccountId",""),
+    "av": request.get("avatar",""),
+    "wp": request.get("wallpaper",""),
+    "shellPrefs": request.get("shellPrefs") or {"iconSize":60,"gridSnap":True}
+}
+
+rows.append(new_row)
+
+cur.execute("update sheets set rows_json=? where name='core'", (json.dumps(rows, separators=(",", ":")),))
+
+# Create a matching desktop row so icon layout/installed apps can save per-user.
+desk_row = cur.execute("select rows_json from sheets where name='desk'").fetchone()
+desk_rows = json.loads(desk_row[0]) if desk_row and desk_row[0] else []
+
+if not any(str(d.get("cid","")) == cid for d in desk_rows):
+    # Current standard app set, excluding legacy ThemeLab.
+    default_apps = "b,x,k,w,r,m,ph,s,h,p,d,fe,df"
+    default_lay = (
+        "b:0,0,120,90,800,600,0,0;"
+        "x:106,0,120,90,800,600,0,0;"
+        "k:212,0,120,90,800,600,0,0;"
+        "w:106,115,120,90,800,600,0,0;"
+        "r:212,115,120,90,800,600,0,0;"
+        "m:318,0,120,90,800,600,0,0;"
+        "ph:318,115,120,90,800,600,0,0;"
+        "s:424,0,120,90,800,600,0,0;"
+        "h:424,115,120,90,800,600,0,0;"
+        "p:530,0,120,90,800,600,0,0;"
+        "d:636,0,120,90,800,600,0,0;"
+        "fe:530,115,120,90,800,600,0,0;"
+        "df:0,115,120,90,800,600,0,0"
+    )
+
+    desk_rows.append({
+        "cid": cid,
+        "apps": default_apps,
+        "lay": default_lay
+    })
+
+    cur.execute(
+        "update sheets set rows_json=? where name='desk'",
+        (json.dumps(desk_rows, separators=(",", ":")),)
+    )
+
+con.commit()
+
+print(json.dumps({
+    "ok": True,
+    "data": {
+        "user": {
+            "cid": cid,
+            "tag": tag,
+            "displayName": display_name,
+            "access": request["access"],
+            "status": request["status"]
+        },
+        "db": db
+    }
+}))
+`;
+
+    const request = {
+      tag,
+      hash,
+      displayName,
+      access,
+      status,
+      occupation,
+      currency,
+      balance: Number.isFinite(balance) ? balance : 0,
+      bankAccountId,
+      avatar,
+      wallpaper,
+      shellPrefs
+    };
+
+    const result = await new Promise((resolve) => {
+      const child = execFile('python3', ['-c', py], { timeout: 8000 }, (err, stdout, stderr) => {
+        if (err) {
+          resolve({ ok: false, error: err.message || String(err), stderr });
+          return;
+        }
+
+        try {
+          resolve(JSON.parse(String(stdout || '{}')));
+        } catch {
+          resolve({ ok: false, error: 'Bad Python JSON response.', stdout, stderr });
+        }
+      });
+
+      child.stdin.write(JSON.stringify(request));
+      child.stdin.end();
+    });
+
+    if (!result.ok) return res.status(400).json(result);
+    return res.json(result);
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message || String(err) });
+  }
+}
+
+
+async function getShellPrefsForRelay_(req, res) {
+  try {
+    let body = req && req.body !== undefined ? req.body : {};
+
+    if (Buffer.isBuffer(body)) body = body.toString('utf8');
+
+    if (typeof body === 'string') {
+      try { body = JSON.parse(body || '{}'); }
+      catch { body = {}; }
+    }
+
+    if (!body || typeof body !== 'object') body = {};
+
+    const payload = body.payload && typeof body.payload === 'object' ? body.payload : {};
+    const user =
+      body.user ||
+      payload.user ||
+      body.session?.user ||
+      payload.session?.user ||
+      req.user ||
+      req.lmiUser ||
+      {};
+
+    const cid = String(user.cid || payload.cid || body.cid || user.id || '').trim();
+    const tag = String(user.tag || payload.tag || body.tag || user.employeeTag || payload.employeeTag || body.employeeTag || '').trim().toUpperCase();
+    const displayName = String(user.displayName || user.cn || user.name || payload.displayName || payload.cn || payload.name || body.displayName || body.cn || body.name || '').trim();
+
+    if (!cid && !tag && !displayName) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Missing user cid/tag/displayName for shell prefs load.'
+      });
+    }
+
+    const { execFile } = await import('node:child_process');
+
+    const py = `
+import sys, json, sqlite3, os
+
+request = json.loads(sys.stdin.read() or "{}")
+cid = str(request.get("cid") or "").strip()
+tag = str(request.get("tag") or "").strip().upper()
+display_name = str(request.get("displayName") or "").strip().lower()
+
+db_candidates = [
+    os.environ.get("SQLITE_DB", ""),
+    os.environ.get("DB_PATH", ""),
+    "/data/brokensynapse.sqlite",
+    "/app/data/brokensynapse.sqlite",
+    "data/brokensynapse.sqlite",
+]
+
+db = None
+for cand in db_candidates:
+    if cand and os.path.exists(cand):
+        db = cand
+        break
+
+if not db:
+    print(json.dumps({"ok": False, "error": "SQLite database not found.", "checked": db_candidates}))
+    sys.exit(0)
+
+con = sqlite3.connect(db)
+cur = con.cursor()
+row = cur.execute("select rows_json from sheets where name='core'").fetchone()
+rows = json.loads(row[0]) if row and row[0] else []
+
+found = None
+for r in rows:
+    r_cid = str(r.get("cid") or "").strip()
+    r_tag = str(r.get("tag") or "").strip().upper()
+    r_name = str(r.get("cn") or r.get("displayName") or r.get("name") or "").strip().lower()
+    if (cid and r_cid == cid) or (tag and r_tag == tag) or (display_name and r_name == display_name):
+        found = r
+        break
+
+if not found:
+    print(json.dumps({"ok": False, "error": "User not found for shell prefs load.", "debug": {"cid": cid, "tag": tag, "db": db}}))
+    sys.exit(0)
+
+prefs = found.get("shellPrefs") or {}
+if isinstance(prefs, str):
+    try:
+        prefs = json.loads(prefs)
+    except Exception:
+        prefs = {}
+if not isinstance(prefs, dict):
+    prefs = {}
+
+print(json.dumps({
+    "ok": True,
+    "data": {
+        "shellPrefs": prefs,
+        "user": {
+            "cid": found.get("cid"),
+            "tag": found.get("tag"),
+            "displayName": found.get("cn") or found.get("displayName") or found.get("tag"),
+            "access": found.get("al") or found.get("access")
+        },
+        "db": db
+    }
+}))
+`;
+
+    const result = await new Promise((resolve) => {
+      const child = execFile('python3', ['-c', py], { timeout: 8000 }, (err, stdout, stderr) => {
+        if (err) {
+          resolve({ ok: false, error: err.message || String(err), stderr });
+          return;
+        }
+
+        try {
+          resolve(JSON.parse(String(stdout || '{}')));
+        } catch {
+          resolve({ ok: false, error: 'Bad Python JSON response.', stdout, stderr });
+        }
+      });
+
+      child.stdin.write(JSON.stringify({ cid, tag, displayName }));
+      child.stdin.end();
+    });
+
+    if (!result.ok) return res.status(400).json(result);
+    return res.json(result);
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message || String(err) });
+  }
+}
+
+
+async function saveShellPrefsForRelay_(req, res) {
+  try {
+    let body = req && req.body !== undefined ? req.body : {};
+
+    if (Buffer.isBuffer(body)) {
+      body = body.toString('utf8');
+    }
+
+    if (typeof body === 'string') {
+      try { body = JSON.parse(body || '{}'); }
+      catch { body = {}; }
+    }
+
+    if (!body || typeof body !== 'object') body = {};
+
+    const payload = body.payload && typeof body.payload === 'object' ? body.payload : {};
+
+    const user =
+      body.user ||
+      payload.user ||
+      body.session?.user ||
+      payload.session?.user ||
+      req.user ||
+      req.lmiUser ||
+      {};
+
+    const cid = String(
+      user.cid ||
+      payload.cid ||
+      body.cid ||
+      user.id ||
+      ''
+    ).trim();
+
+    const tag = String(
+      user.tag ||
+      payload.tag ||
+      body.tag ||
+      user.employeeTag ||
+      payload.employeeTag ||
+      body.employeeTag ||
+      ''
+    ).trim().toUpperCase();
+
+    const displayName = String(
+      user.displayName ||
+      user.cn ||
+      user.name ||
+      payload.displayName ||
+      payload.cn ||
+      payload.name ||
+      body.displayName ||
+      body.cn ||
+      body.name ||
+      ''
+    ).trim();
+
+    if (!cid && !tag && !displayName) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Missing user cid/tag/displayName for shell prefs save.',
+        debug: {
+          bodyKeys: Object.keys(body || {}),
+          payloadKeys: Object.keys(payload || {}),
+          userKeys: Object.keys(user || {})
+        }
+      });
+    }
+
+    const incoming = normalizeShellPrefs_(payload.prefs || payload.shellPrefs || body.prefs || body.shellPrefs || {});
+
+    const { execFile } = await import('node:child_process');
+
+    const py = `
+import sys, json, sqlite3, os
+
+request = json.loads(sys.stdin.read() or "{}")
+cid = str(request.get("cid") or "").strip()
+tag = str(request.get("tag") or "").strip().upper()
+display_name = str(request.get("displayName") or "").strip().lower()
+incoming = request.get("incoming") or {}
+
+db_candidates = [
+    os.environ.get("SQLITE_DB", ""),
+    os.environ.get("DB_PATH", ""),
+    "/data/brokensynapse.sqlite",
+    "/app/data/brokensynapse.sqlite",
+    "data/brokensynapse.sqlite",
+]
+
+db = None
+for cand in db_candidates:
+    if cand and os.path.exists(cand):
+        db = cand
+        break
+
+if not db:
+    print(json.dumps({"ok": False, "error": "SQLite database not found.", "checked": db_candidates}))
+    sys.exit(0)
+
+con = sqlite3.connect(db)
+cur = con.cursor()
+
+row = cur.execute("select rows_json from sheets where name='core'").fetchone()
+rows = json.loads(row[0]) if row and row[0] else []
+
+idx = -1
+for i, r in enumerate(rows):
+    r_cid = str(r.get("cid") or "").strip()
+    r_tag = str(r.get("tag") or "").strip().upper()
+    r_name = str(r.get("cn") or r.get("displayName") or r.get("name") or "").strip().lower()
+    if (cid and r_cid == cid) or (tag and r_tag == tag) or (display_name and r_name == display_name):
+        idx = i
+        break
+
+if idx < 0:
+    print(json.dumps({"ok": False, "error": "User not found for shell prefs save.", "debug": {"cid": cid, "tag": tag, "db": db}}))
+    sys.exit(0)
+
+old = rows[idx].get("shellPrefs") or {}
+if isinstance(old, str):
+    try:
+        old = json.loads(old)
+    except Exception:
+        old = {}
+if not isinstance(old, dict):
+    old = {}
+
+next_prefs = dict(old)
+next_prefs.update(incoming)
+
+rows[idx]["shellPrefs"] = next_prefs
+
+cur.execute("update sheets set rows_json=? where name='core'", (json.dumps(rows, separators=(",", ":")),))
+con.commit()
+
+user = rows[idx]
+print(json.dumps({
+    "ok": True,
+    "data": {
+        "shellPrefs": next_prefs,
+        "user": {
+            "cid": user.get("cid"),
+            "tag": user.get("tag"),
+            "displayName": user.get("cn") or user.get("displayName") or user.get("tag"),
+            "access": user.get("al") or user.get("access")
+        },
+        "db": db
+    }
+}))
+`;
+
+    const result = await new Promise((resolve) => {
+      const child = execFile('python3', ['-c', py], { timeout: 8000 }, (err, stdout, stderr) => {
+        if (err) {
+          resolve({ ok: false, error: err.message || String(err), stderr });
+          return;
+        }
+
+        try {
+          resolve(JSON.parse(String(stdout || '{}')));
+        } catch {
+          resolve({ ok: false, error: 'Bad Python JSON response.', stdout, stderr });
+        }
+      });
+
+      child.stdin.write(JSON.stringify({ cid, tag, displayName, incoming }));
+      child.stdin.end();
+    });
+
+    if (!result.ok) {
+      return res.status(400).json(result);
+    }
+
+    return res.json(result);
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message || String(err) });
+  }
+}
+
+
+
+
+// -----------------------------------------------------------------------------
+// HARD SETTINGS.LMX COMPAT CATCH
+// This sits before the normal /api/relay handler so Settings cannot die from
+// "Unknown action: getCurrentAccount" even if the routes table is stale/busted.
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// EARLY SHELL PREFS RELAY CATCH
+// Must run before the normal /api/relay handler. The normal route path is
+// currently resolving user.shell.get to the wrong/blank row, so this makes
+// cid/tag/name lookup explicit and returns the exact core.shellPrefs blob.
+// -----------------------------------------------------------------------------
+app.post('/api/relay', express.json({ limit: '5mb' }), async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const action = String(body.action || '').trim();
+
+    if (action !== 'user.shell.get' && action !== 'user.shell.save') {
+      return next();
+    }
+
+    const payload = body.payload || {};
+    const user = body.user || payload.user || {};
+
+    const rows = rows_('core');
+
+    function pickCore(u) {
+      u = u || {};
+
+      const cid = String(u.cid || u.id || '').trim();
+      if (cid) {
+        const hit = rows.find(r => String(r.cid || r.id || '').trim() === cid);
+        if (hit) return hit;
+      }
+
+      const tag = String(u.tag || u.username || '').trim().toLowerCase();
+      if (tag) {
+        const hit = rows.find(r => String(r.tag || r.username || '').trim().toLowerCase() === tag);
+        if (hit) return hit;
+      }
+
+      const name = String(u.displayName || u.cn || u.name || '').trim().toLowerCase();
+      if (name) {
+        const hit = rows.find(r => String(r.cn || r.displayName || r.name || '').trim().toLowerCase() === name);
+        if (hit) return hit;
+      }
+
+      return rows[0] || {};
+    }
+
+    function parsePrefs(c) {
+      let raw = c && c.shellPrefs;
+
+      if (!raw && c && c.prefs) raw = c.prefs;
+
+      if (!raw) return {};
+
+      if (typeof raw === 'object') {
+        return normalizeShellPrefs_(raw);
+      }
+
+      try {
+        return normalizeShellPrefs_(JSON.parse(String(raw)));
+      } catch {
+        return {};
+      }
+    }
+
+    const c = pickCore(user);
+    const cid = String(c.cid || c.id || '').trim();
+    const oldPrefs = parsePrefs(c);
+
+    if (action === 'user.shell.get') {
+      return res.json({
+        ok: true,
+        data: {
+          prefs: oldPrefs,
+          shellPrefs: oldPrefs,
+          cid,
+          tag: c.tag || '',
+          user: userFromCore_(c)
+        }
+      });
+    }
+
+    const incoming = normalizeShellPrefs_(
+      (payload && (payload.prefs || payload.shellPrefs)) || {}
+    );
+
+    const prefs = normalizeShellPrefs_(Object.assign({}, oldPrefs, incoming));
+
+    const changed = updateRows_(
+      'core',
+      r => String(r.cid || r.id || '').trim() === cid,
+      r => Object.assign(r, { shellPrefs: JSON.stringify(prefs) })
+    );
+
+    try {
+      appendSafe_('audit', ['id','t','cid','action','ok','blob'], {
+        id: 'a_' + Date.now(),
+        t: now_(),
+        cid,
+        action,
+        ok: changed ? 1 : 0,
+        blob: pack_({ shellPrefs: prefs })
+      });
+    } catch {}
+
+    return res.json({
+      ok: true,
+      data: {
+        saved: !!changed,
+        prefs,
+        shellPrefs: prefs,
+        cid,
+        tag: c.tag || ''
+      }
+    });
+  } catch (err) {
+    return res.status(200).json({
+      ok: false,
+      error: String(err && err.message ? err.message : err)
+    });
+  }
+});
+
+
+app.post('/api/relay', express.json({ limit: '5mb' }), async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const action = String(body.action || '').trim();
+
+    if (action !== 'getCurrentAccount' &&
+        action !== 'updateCurrentAccount' &&
+        action !== 'account.current.get' &&
+        action !== 'account.current.update') {
+      return next();
+    }
+
+    const payload = body.payload || {};
+    const user = body.user || {};
+    const c = coreFromUserStrict_((payload && payload.user) || user || {});
+
+    if (action === 'getCurrentAccount' || action === 'account.current.get') {
+      const prefs = shellPrefsFromCore_(c);
+      return res.json({
+        ok: true,
+        data: {
+          user: userFromCore_(c),
+          raw: c,
+          prefs,
+          shellPrefs: prefs
+        }
+      });
+    }
+
+    const patch = payload.patch && typeof payload.patch === 'object'
+      ? payload.patch
+      : payload;
+
+    const nextPatch = {};
+
+    function first() {
+      for (const k of arguments) {
+        if (patch[k] !== undefined) return patch[k];
+      }
+      return undefined;
+    }
+
+    const displayName = first('displayName', 'cn', 'characterName');
+    if (displayName !== undefined) nextPatch.cn = String(displayName || '').trim();
+
+    const tag = first('tag');
+    if (tag !== undefined) nextPatch.tag = String(tag || '').trim();
+
+    const hash = first('hash');
+    if (hash !== undefined) nextPatch.hash = String(hash || '');
+
+    const access = first('access', 'al');
+    if (access !== undefined) nextPatch.al = String(access || '').trim();
+
+    const status = first('status', 'st');
+    if (status !== undefined) nextPatch.st = String(status || '').trim();
+
+    const occupation = first('occupation', 'occ');
+    if (occupation !== undefined) nextPatch.occ = String(occupation || '').trim();
+
+    const currency = first('currency', 'cur');
+    if (currency !== undefined) nextPatch.cur = String(currency || '').trim();
+
+    const bankAccountId = first('bankAccountId', 'bid');
+    if (bankAccountId !== undefined) nextPatch.bid = String(bankAccountId || '').trim();
+
+    const avatar = first('avatar', 'av');
+    if (avatar !== undefined) nextPatch.av = String(avatar || '').trim();
+
+    const wallpaper = first('wallpaper', 'wp');
+    if (wallpaper !== undefined) nextPatch.wp = String(wallpaper || '').trim();
+
+    const incomingPrefs = first('shellPrefs', 'prefs', 'desktopPrefs');
+    if (incomingPrefs !== undefined) {
+      const oldPrefs = shellPrefsFromCore_(c);
+      const newPrefs = normalizeShellPrefs_(incomingPrefs || {});
+      nextPatch.shellPrefs = JSON.stringify(Object.assign({}, oldPrefs, newPrefs));
+    }
+
+    let changed = 0;
+    if (Object.keys(nextPatch).length) {
+      changed = updateRows_(
+        'core',
+        r => String(r.cid) === String(c.cid),
+        r => Object.assign(r, nextPatch)
+      );
+    }
+
+    try {
+      appendSafe_('audit', ['id','t','cid','action','ok','blob'], {
+        id: 'a_' + Date.now(),
+        t: now_(),
+        cid: c.cid,
+        action,
+        ok: changed ? 1 : 0,
+        blob: pack_({ changed: !!changed, keys: Object.keys(nextPatch) })
+      });
+    } catch {}
+
+    const fresh = coreFromUserStrict_({ cid: c.cid });
+    const prefs = shellPrefsFromCore_(fresh);
+
+    return res.json({
+      ok: true,
+      data: {
+        saved: !!changed,
+        user: userFromCore_(fresh),
+        raw: fresh,
+        prefs,
+        shellPrefs: prefs
+      }
+    });
+  } catch (err) {
+    return res.status(200).json({
+      ok: false,
+      error: String(err && err.message ? err.message : err)
+    });
+  }
+});
+
+
+app.post('/api/relay', express.json({ limit: '5mb' }), async (req, res, next) => {
+  const action = String((req.body || {}).action || '').trim();
+
+  if (action === 'saveShellPrefs' || action === 'writeShellPrefs' || action === 'setShellPrefs') {
+    return saveShellPrefsForRelay_(req, res);
+  }
+
+  return next();
+});
+
 app.post('/api/relay', handleRelay);
 app.get('/api/admin/sheets', requireAdmin, (req,res)=>res.json({ok:true,sheets:listSheets()}));
 app.get('/api/admin/sheets/:name', requireAdmin, (req,res)=>res.json({ok:true,sheet:getSheet(req.params.name)}));

@@ -1,5 +1,6 @@
+import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import https from 'https';
-import fs from 'fs';
 import path from 'path';
 import * as XLSX from 'xlsx';
 import { putSheet, listSheets } from '../lib/store.js';
@@ -37,10 +38,12 @@ function sheetToRows(ws){
 
 console.log(`Downloading Google Sheet ${SHEET_ID}...`);
 await download(url, outPath);
-const wb = XLSX.readFile(outPath, { cellDates:true });
+const wb = XLSX.read(await fsp.readFile(outPath), { type:'buffer', cellDates:true });
 for(const name of wb.SheetNames){
   const {headers, rows}=sheetToRows(wb.Sheets[name]);
   putSheet(name, rows, headers);
   console.log(`${name}: ${rows.length} row(s)`);
 }
 console.log('Imported sheets:', listSheets().map(s=>`${s.name}(${s.rowCount})`).join(', '));
+
+process.exit(0);

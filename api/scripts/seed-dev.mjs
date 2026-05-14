@@ -9,7 +9,7 @@ putSheet('dictApps', [
   {k:'d',id:'dealership',nm:'Dealership.LMX',path:'modules/dealership.html',ico:'◆',desc:'Vehicles',w:960,h:680},
   {k:'m',id:'bodyMods',nm:'BodyMods.LMX',path:'modules/bodyMods.html',ico:'☥',desc:'Body Mods',w:980,h:700},
   {k:'h',id:'pharma',nm:'PHARMA.LMX',path:'modules/pharma.html',ico:'✚',desc:'Pharma',w:960,h:680},
-  {k:'s',id:'settings',nm:'Settings',path:'modules/settings.html',ico:'⚙',desc:'Settings',w:760,h:560},
+  {k:'s',id:'settings',nm:'Settings',path:'modules/settings-v2.html',ico:'⚙',desc:'Settings',w:760,h:560},
   {k:'x',id:'bipac',nm:'BIPACK',path:'modules/bipac.html',ico:'⬡',desc:'Package manager',w:900,h:640},
   {k:'r',id:'convert',nm:'Convert.LMX',path:'modules/convert.html',ico:'⇄',desc:'Converter',w:760,h:560}
 ], ['k','id','nm','path','ico','desc','w','h']);

@@ -1,0 +1,10 @@
+[
+  {
+    "cid": "c_demo",
+    "tag": "DEMO",
+    "cn": "Demo User",
+    "al": "Admin",
+    "wp": "/lmi/assets/images/wallpaper.png",
+    "shellPrefs": "{\"iconSize\": 72, \"gridSnap\": true, \"hiddenTaskbar\": false, \"iconPack\": \"default\"}"
+  }
+]

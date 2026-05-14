@@ -1,0 +1,74 @@
+[
+  {
+    "th": "Default",
+    "accent": "#2aff5f",
+    "bg": "#050705",
+    "panel": "#0b100c",
+    "text": "#eaffed",
+    "muted": "#b8c7bb"
+  },
+  {
+    "th": "RageRed",
+    "accent": "#ff1638",
+    "bg": "#090203",
+    "panel": "#120406",
+    "text": "#fff3f4",
+    "muted": "#ddb8be"
+  },
+  {
+    "th": "HoneyAmber",
+    "accent": "#d49a2a",
+    "bg": "#0d0b08",
+    "panel": "#15110d",
+    "text": "#f7eddc",
+    "muted": "#d7c7ad"
+  },
+  {
+    "th": "LMC Lavender",
+    "accent": "#b77cff",
+    "bg": "#020203",
+    "panel": "#060507",
+    "text": "#f2eaff",
+    "muted": "#aaa0b8"
+  },
+  {
+    "th": "Light",
+    "accent": "#000000",
+    "bg": "#f4f7f2",
+    "panel": "#e8efe7",
+    "text": "#102016",
+    "muted": "#51635a"
+  },
+  {
+    "th": "Carbon",
+    "accent": "#d8d8d8",
+    "bg": "#020202",
+    "panel": "#070707",
+    "text": "#f2f2f2",
+    "muted": "#9d9d9d"
+  },
+  {
+    "th": "Sheya",
+    "accent": "#ff3344",
+    "bg": "#141414",
+    "panel": "#1c1c1c",
+    "text": "#ffffff",
+    "muted": "#b0b0b0"
+  },
+  {
+    "th": "Anzu",
+    "accent": "#ff8c00",
+    "bg": "#121212",
+    "panel": "#1a1a1a",
+    "text": "#ffffff",
+    "muted": "#b0b0b0"
+  },
+  {
+    "th": "777",
+    "accent": "#b89000",
+    "bg": "#fffef9",
+    "panel": "#ffffff",
+    "text": "#1a1200",
+    "muted": "#3d3010"
+  }
+]

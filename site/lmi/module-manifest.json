@@ -123,11 +123,11 @@
     "id": "settings",
     "name": "Settings.LMX",
     "title": "Settings.LMX",
-    "description": "Local relay and desktop controls",
+    "description": "Profile, appearance, wallpaper, desktop and relay settings",
     "icon": "\u2699",
-    "path": "modules/settings.html",
-    "w": 720,
-    "h": 520,
+    "path": "modules/settings-v2.html",
+    "w": 1120,
+    "h": 760,
     "x": 500,
     "y": 150
   },
@@ -142,17 +142,5 @@
     "h": 720,
     "x": 120,
     "y": 110
-  },
-  {
-    "id": "themeLab",
-    "name": "ThemeLab.LMX",
-    "title": "ThemeLab.LMX",
-    "description": "Live theme changer",
-    "icon": "TH",
-    "path": "modules/themeLab.html",
-    "w": 940,
-    "h": 650,
-    "x": 180,
-    "y": 130
   }
 ]

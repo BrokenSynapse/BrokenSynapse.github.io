@@ -1,0 +1,86 @@
+# Node / build junk
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Docker / local env secrets
+.env
+.env.*
+cloudflared/
+*.pem
+*.key
+*.crt
+
+# Backups / rollback spam
+rollback-snapshots/
+backups/
+*.tar.gz
+*.zip
+*.backup*
+*-backup-*
+*.before-*
+*.old
+*.bak
+
+# Runtime / generated DB state
+data/*.sqlite
+data/*.sqlite-shm
+data/*.sqlite-wal
+data/brokensynapse-before-*.sqlite
+
+# User/local media and uploads
+uploads/
+site/lmi/assets/
+site/assets/images/
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# More patch/test leftovers
+*rollback*
+site/lmi/scripts/lmi-icon-drag-*.js
+site/lmi/scripts/lmi-icon-drop-saver.js
+site/lmi/scripts/lmi-cache-nuke-once.js
+site/lmi/scripts/lmi-kill-snap-ghost.js
+
+# Dead/experimental icon/drag/iconpack helpers not used by live entrypoints
+api/icon_pack_install.py
+site/lmi/modules/settings-v2-iconpacks.js
+site/lmi/scripts/lmi-icon-drag-authority.js
+site/lmi/scripts/lmi-icon-drag-shim.js
+site/lmi/scripts/lmi-icon-drag-smoother.js
+site/lmi/scripts/lmi-icon-drop-saver.js
+site/lmi/scripts/lmi-icon-pack-runtime.js
+site/lmi/scripts/lmi-icon-pack-zip-runtime.js
+
+# Retired Settings v1 stack; current Settings.LMX uses settings-v2.*
+site/lmi/modules/settings.html
+site/lmi/modules/settings-account-theme.js
+site/lmi/modules/settings-theme-live-fix.js
+site/lmi/modules/settings-ambience-live-fix.js
+site/lmi/modules/settings-ambience.js
+site/lmi/modules/settings-layout-personalization.css
+site/lmi/modules/settings-layout-personalization.js
+site/lmi/modules/settings-personalization-cleanup.css
+site/lmi/modules/settings-personalization-cleanup.js
+site/lmi/modules/settings-personalization-final-fix.css
+site/lmi/modules/settings-personalization-final-fix.js
+site/lmi/modules/settings-personalization-tab.css
+site/lmi/modules/settings-personalization-tab.js
+site/lmi/modules/settings-polish-personalization.css
+site/lmi/modules/settings-polish-personalization.js
+site/lmi/modules/settings-scroll-fill-fix.css
+site/lmi/modules/settings-scroll-fill-fix.js
+site/lmi/modules/settings-theme-buttons-fix.js
+site/lmi/modules/settings-theme-var-bridge.js
+
+# Retired Settings v1 sizing helper
+site/lmi/modules/settings-safe-size.css
+
+# Sanitized DB docs/samples for Codex/dev reference
+!data/dev/
+!data/dev/**

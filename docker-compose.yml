@@ -18,12 +18,16 @@ services:
     container_name: bs-api
     restart: unless-stopped
     environment:
+      ASSET_ROOT: /site/lmi/assets
+      ASSET_URL_PREFIX: /lmi/assets
       PORT: 3000
       DB_PATH: /data/brokensynapse.sqlite
       SHEET_ID: 1Kis40W84qlJVKvC6One9DX1iQvl0V71GL3UYXuZdWQc
       ADMIN_TOKEN: change-me-after-deploy
     volumes:
+      - ./site/lmi/assets:/site/lmi/assets
       - ./data:/data
+      - ./site:/site
       - ./uploads:/uploads
 
 volumes:

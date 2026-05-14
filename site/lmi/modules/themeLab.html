@@ -1,4 +1,191 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ThemeLab.LMX</title><link rel="stylesheet" href="../scripts/lmi-theme.css"><script src="../scripts/lmi-module-sdk.js"></script></head><body><main class="lmi-module"><header class="module-head"><div><h1 class="module-title">ThemeLab.LMX</h1><div class="module-sub">live theme changer / broadcasts to desktop + every open app window</div></div><button id="reset" class="btn secondary">Reset</button></header><section class="module-body"><div class="grid"><div class="card col-5"><h2>Theme Variables</h2><p class="muted">Changes apply while you drag/type. The preview below, this window, the parent desktop, open title bars, and other modules all receive the patch.</p><div class="subgrid" id="controls"></div><div class="row" style="margin-top:12px"><button id="save" class="btn good">Save Local</button></div><div id="status" class="status"></div></div><div class="card col-7"><h2>Live Preview</h2><div class="desktop-preview"><button class="desktop-icon" style="left:18px;top:18px;position:absolute"><span class="icon-box">▣</span><strong>Icon</strong><em>movable</em></button><div class="preview-window"><div class="preview-title">Window Title / --panel2 + --line</div><div class="preview-card"><b>Card / --panel</b><p class="muted">Muted text / --muted. Accent button below.</p><button class="btn">Accent</button> <button class="btn good">Good</button> <button class="btn bad">Bad</button></div></div></div><h3>Swatches</h3><div class="subgrid" id="swatches"></div></div></div></section></main><script>
-const defaults={'--bg':'#020104','--panel':'#08050d','--panel2':'#12091f','--text':'#ffffff','--muted':'#b8a8d6','--line':'#8d54ff','--line2':'#5b2ea6','--accent':'#a45cff','--accent2':'#ffffff','--good':'#88ffbd','--bad':'#ff6b9a','--warn':'#ffd166'};let vars={...defaults};try{vars={...vars,...JSON.parse(localStorage.getItem('LMI_THEME_VARS')||'{}')}}catch{}function broadcast(){LMI.broadcastTheme(vars);renderSwatches();status.className='status good';status.textContent='Live patch broadcast '+new Date().toLocaleTimeString();}
-function render(){controls.innerHTML=Object.keys(defaults).map(k=>`<div class="field"><label>${k}</label><div class="row"><input type="color" data-k="${k}" value="${vars[k]}"><input data-text="${k}" value="${vars[k]}"></div></div>`).join('');controls.querySelectorAll('input[type=color]').forEach(inp=>inp.oninput=()=>{vars[inp.dataset.k]=inp.value;const t=controls.querySelector(`[data-text="${inp.dataset.k}"]`);if(t)t.value=inp.value;broadcast()});controls.querySelectorAll('input[data-text]').forEach(inp=>inp.oninput=()=>{vars[inp.dataset.text]=inp.value;const c=controls.querySelector(`input[type=color][data-k="${inp.dataset.text}"]`);if(c&&/^#[0-9a-f]{6}$/i.test(inp.value))c.value=inp.value;broadcast()});renderSwatches();LMI.applyTheme(vars)}function renderSwatches(){swatches.innerHTML=Object.entries(vars).map(([k,v])=>`<div><div class="swatch" style="background:${v}"></div><div class="muted">${k}<br>${v}</div></div>`).join('')}save.onclick=()=>{localStorage.setItem('LMI_THEME_VARS',JSON.stringify(vars));broadcast();};reset.onclick=()=>{vars={...defaults};render();broadcast();};LMI.ready('themeLab',()=>{render();broadcast()});
-</script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ThemeLab.LMX</title>
+<link rel="stylesheet" href="../scripts/lmi-theme.css">
+<script src="../scripts/lmi-module-sdk.js?v=wallpaper2"></script>
+<style>
+.wallpaper-preview{
+  min-height:150px;
+  border:1px solid var(--line2);
+  background:
+    linear-gradient(rgba(0,0,0,.28),rgba(0,0,0,.56)),
+    var(--wallpaper-url, radial-gradient(circle at 50% 30%, rgba(164,92,255,.28), transparent 32%), linear-gradient(180deg,#050008,#000));
+  background-size:cover;
+  background-position:center;
+  margin-top:10px;
+  display:flex;
+  align-items:end;
+  padding:10px;
+}
+.wallpaper-preview span{
+  background:rgba(0,0,0,.65);
+  border:1px solid var(--line2);
+  padding:4px 8px;
+  color:var(--text);
+}
+</style>
+</head>
+<body>
+<main class="lmi-module">
+<header class="module-head">
+  <div>
+    <h1 class="module-title">ThemeLab.LMX</h1>
+    <div class="module-sub">live theme changer / user-tied wallpaper control</div>
+  </div>
+  <button id="reset" class="btn secondary">Reset</button>
+</header>
+
+<section class="module-body">
+<div class="grid">
+  <div class="card col-5">
+    <h2>Theme Variables</h2>
+    <p class="muted">Changes apply while you drag/type. Save Local stores theme colors in this browser only.</p>
+    <div class="subgrid" id="controls"></div>
+    <div class="row" style="margin-top:12px">
+      <button id="save" class="btn good">Save Local</button>
+    </div>
+    <div id="status" class="status"></div>
+  </div>
+
+  <div class="card col-7">
+    <h2>Wallpaper / Desktop Backdrop</h2>
+    <p class="muted">This saves the wallpaper path/URL to the logged-in user on the VM backend. Use a local path like <code>/assets/images/name.png</code> or a full HTTPS image URL.</p>
+    <div class="field">
+      <label>User Wallpaper URL / Path</label>
+      <input id="wallpaperUrl" placeholder="/assets/images/lucky777.png">
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button id="applyWallpaper" class="btn">Apply Preview</button>
+      <button id="saveWallpaper" class="btn good">Save To User</button>
+      <button id="clearWallpaper" class="btn bad">Clear User Wallpaper</button>
+    </div>
+    <div class="wallpaper-preview" id="wallpaperPreview"><span>Desktop preview</span></div>
+    <div id="wallpaperStatus" class="status"></div>
+
+    <h2 style="margin-top:16px">Live Preview</h2>
+    <div class="desktop-preview">
+      <button class="desktop-icon" style="left:18px;top:18px;position:absolute"><span class="icon-box">▣</span><strong>Icon</strong><em>movable</em></button>
+      <div class="preview-window">
+        <div class="preview-title">Window Title / --panel2 + --line</div>
+        <div class="preview-card"><b>Card / --panel</b><p class="muted">Muted text / --muted. Accent button below.</p><button class="btn">Accent</button> <button class="btn good">Good</button> <button class="btn bad">Bad</button></div>
+      </div>
+    </div>
+    <h3>Swatches</h3>
+    <div class="subgrid" id="swatches"></div>
+  </div>
+</div>
+</section>
+</main>
+
+<script>
+const defaults={'--bg':'#020104','--panel':'#08050d','--panel2':'#12091f','--text':'#ffffff','--muted':'#b8a8d6','--line':'#8d54ff','--line2':'#5b2ea6','--accent':'#a45cff','--accent2':'#ffffff','--good':'#88ffbd','--bad':'#ff6b9a','--warn':'#ffd166'};
+let vars={...defaults};
+let context=null;
+
+try{vars={...vars,...JSON.parse(localStorage.getItem('LMI_THEME_VARS')||'{}')}}catch{}
+
+function broadcast(){
+  LMI.broadcastTheme(vars);
+  renderSwatches();
+  status.className='status good';
+  status.textContent='Live patch broadcast '+new Date().toLocaleTimeString();
+}
+
+function render(){
+  controls.innerHTML=Object.keys(defaults).map(k=>`<div class="field"><label>${k}</label><div class="row"><input type="color" data-k="${k}" value="${vars[k]}"><input data-text="${k}" value="${vars[k]}"></div></div>`).join('');
+  controls.querySelectorAll('input[type=color]').forEach(inp=>inp.oninput=()=>{
+    vars[inp.dataset.k]=inp.value;
+    const t=controls.querySelector(`[data-text="${inp.dataset.k}"]`);
+    if(t)t.value=inp.value;
+    broadcast();
+  });
+  controls.querySelectorAll('input[data-text]').forEach(inp=>inp.oninput=()=>{
+    vars[inp.dataset.text]=inp.value;
+    const c=controls.querySelector(`input[type=color][data-k="${inp.dataset.text}"]`);
+    if(c&&/^#[0-9a-f]{6}$/i.test(inp.value))c.value=inp.value;
+    broadcast();
+  });
+  renderSwatches();
+  LMI.applyTheme(vars);
+}
+
+function renderSwatches(){
+  swatches.innerHTML=Object.entries(vars).map(([k,v])=>`<div><div class="swatch" style="background:${v}"></div><div class="muted">${k}<br>${v}</div></div>`).join('');
+}
+
+function setWallpaperPreview(wp){
+  wp=String(wp||'').trim();
+  if(wp){
+    document.documentElement.style.setProperty('--wallpaper-url',`url("${wp}")`);
+    localStorage.setItem('LMI_WALLPAPER',wp);
+  }else{
+    document.documentElement.style.removeProperty('--wallpaper-url');
+    localStorage.removeItem('LMI_WALLPAPER');
+  }
+  if (LMI.broadcastWallpaper) {
+    LMI.broadcastWallpaper(wp);
+  } else if (window.parent && window.parent !== window) {
+    window.parent.postMessage({ type: 'LMI_SET_WALLPAPER', wallpaper: wp }, location.origin);
+  }
+}
+
+save.onclick=()=>{
+  localStorage.setItem('LMI_THEME_VARS',JSON.stringify(vars));
+  broadcast();
+};
+
+reset.onclick=()=>{
+  vars={...defaults};
+  render();
+  broadcast();
+};
+
+applyWallpaper.onclick=()=>{
+  const wp=wallpaperUrl.value.trim();
+  setWallpaperPreview(wp);
+  wallpaperStatus.className='status good';
+  wallpaperStatus.textContent=wp?'Preview applied to desktop.':'Wallpaper preview cleared.';
+};
+
+saveWallpaper.onclick=async()=>{
+  const wp=wallpaperUrl.value.trim();
+  try{
+    wallpaperStatus.className='status';
+    wallpaperStatus.textContent='Saving wallpaper to user profile...';
+    const resp=await LMI.api('user.wallpaper.save',{wallpaper:wp},{label:'Saving wallpaper...'});
+    setWallpaperPreview(resp.wallpaper||wp);
+    wallpaperStatus.className='status good';
+    wallpaperStatus.textContent='Wallpaper saved to logged-in user.';
+  }catch(e){
+    wallpaperStatus.className='status bad';
+    wallpaperStatus.textContent=e.message||String(e);
+  }
+};
+
+clearWallpaper.onclick=async()=>{
+  wallpaperUrl.value='';
+  try{
+    await LMI.api('user.wallpaper.save',{wallpaper:''},{label:'Clearing wallpaper...'});
+    setWallpaperPreview('');
+    wallpaperStatus.className='status good';
+    wallpaperStatus.textContent='User wallpaper cleared.';
+  }catch(e){
+    wallpaperStatus.className='status bad';
+    wallpaperStatus.textContent=e.message||String(e);
+  }
+};
+
+LMI.ready('themeLab',ctx=>{
+  context=ctx;
+  const wp=(ctx.user&&(ctx.user.wallpaper||ctx.user.wp))||localStorage.getItem('LMI_WALLPAPER')||'';
+  wallpaperUrl.value=wp;
+  if(wp) setWallpaperPreview(wp);
+  render();
+  broadcast();
+});
+</script>
+</body>
+</html>

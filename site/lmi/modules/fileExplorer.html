@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FileExplorer.LMX</title>
+<link rel="stylesheet" href="../scripts/lmi-theme.css">
+<script src="../scripts/lmi-module-sdk.js"></script>
+<style>
+*{box-sizing:border-box}
+body{overflow:hidden}
+button,select,input,textarea{font-family:inherit}
+.fe-shell{height:100vh;display:grid;grid-template-rows:auto auto 1fr;background:radial-gradient(circle at 20% 0%,rgba(164,92,255,.12),transparent 30%),var(--bg)}
+.fe-title{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line);background:rgba(0,0,0,.35)}
+.fe-title h1{margin:0;font-size:18px;letter-spacing:.18em}.fe-title small{color:var(--muted)}
+.hint{font-size:12px;color:var(--muted)}
+.toolbar{display:grid;grid-template-columns:auto 1fr auto;gap:8px;padding:8px;border-bottom:1px solid var(--line2);background:rgba(0,0,0,.25)}
+.nav,.view{display:flex;gap:8px;align-items:center;min-width:0}
+.tool{
+  border:1px solid var(--line2);
+  background:#050209;
+  color:var(--text);
+  min-width:34px;
+  height:34px;
+  display:grid;
+  place-items:center;
+  cursor:pointer;
+  user-select:none;
+}
+.tool:hover{border-color:var(--line);box-shadow:0 0 12px rgba(164,92,255,.24);text-shadow:0 0 10px var(--accent)}
+.address{display:grid;grid-template-columns:auto 1fr auto;gap:8px}
+.root{border:1px solid var(--line2);padding:8px;background:#050209;font-weight:900}
+#go{padding:8px 12px}
+.view input#filter{min-width:160px}
+.view select{
+  border:1px solid var(--line2);
+  background:#050209;
+  color:var(--text);
+  padding:8px;
+  outline:none;
+}
+.view select:focus,.view input:focus{border-color:var(--line);box-shadow:0 0 14px rgba(164,92,255,.28)}
+.mini-label{color:var(--muted);font-size:10px;letter-spacing:.12em;text-transform:uppercase}
+#gridSize{width:96px;accent-color:var(--accent)}
+.main{min-height:0;display:grid;grid-template-columns:260px 1fr 310px}
+.side{border-right:1px solid var(--line2);padding:10px;overflow:auto;background:rgba(0,0,0,.25)}
+.content{min-width:0;min-height:0;display:grid;grid-template-rows:auto auto 1fr auto}
+.preview{border-left:1px solid var(--line2);padding:10px;overflow:auto;background:rgba(0,0,0,.25)}
+.crumbs{display:flex;gap:4px;flex-wrap:wrap;padding:8px;border-bottom:1px solid var(--line2);background:#050209;align-items:center}
+.crumb{border:0;background:transparent;padding:4px 2px;color:var(--muted);cursor:pointer;font-family:monospace}
+.crumb:hover{color:#fff;text-shadow:0 0 10px var(--accent)}.crumb.current{color:#fff;font-weight:900}
+.head{display:grid;grid-template-columns:1fr 90px 90px 110px;padding:7px 10px;border-bottom:1px solid var(--line2);color:var(--muted);font-size:11px;letter-spacing:.12em}
+.list{overflow:auto;min-height:0;padding:8px}
+.item{cursor:pointer;border:1px solid transparent;background:rgba(0,0,0,.17);user-select:none}
+.item:hover{border-color:var(--line2);background:rgba(164,92,255,.08)}
+.item.selected{border-color:var(--line);background:rgba(164,92,255,.18);box-shadow:0 0 16px rgba(164,92,255,.18)}
+.details .item{display:grid;grid-template-columns:1fr 90px 90px 110px;gap:8px;align-items:center;padding:6px 8px;margin-bottom:2px}
+.namecell{display:flex;align-items:center;gap:8px;min-width:0}
+.ico{width:34px;height:30px;border:1px solid var(--line2);background:#050209;display:grid;place-items:center;overflow:hidden;flex:0 0 auto}
+.ico img{width:100%;height:100%;object-fit:cover}.filename{font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pathline{font-family:monospace;color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--fe-grid-size,140px),1fr));gap:10px;align-content:start}
+.grid .item{padding:9px;text-align:center;min-height:calc(var(--fe-grid-size,140px) * .92)}.grid .namecell{display:block}.grid .ico{width:calc(var(--fe-grid-size,140px) * .72);height:calc(var(--fe-grid-size,140px) * .55);margin:0 auto 8px}.grid .filename{white-space:normal;font-size:12px;line-height:1.15}.grid .pathline,.grid .extra{display:none}
+.tree-title{font-size:11px;letter-spacing:.14em;margin:12px 0 6px;color:#fff;border-bottom:1px solid var(--line2);padding-bottom:5px}
+.tree-node{display:flex;gap:7px;align-items:center;padding:5px 6px;border:0;background:transparent;cursor:pointer;color:var(--muted)}
+.tree-node:hover,.tree-node.active{color:#fff;text-shadow:0 0 10px var(--accent)}
+.tree-node.active .tree-name::before{content:"/";color:var(--accent);margin-right:2px}
+.tree-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tree-indent{padding-left:calc(6px + var(--depth,0) * 14px)}
+.preview-box{min-height:210px;border:1px solid var(--line2);display:grid;place-items:center;background:#020104;overflow:hidden;margin-bottom:10px}.preview-box img{max-width:100%;max-height:360px;object-fit:contain}
+.preview-box iframe{width:100%;height:360px;border:0;background:#fff}
+.preview-box pre{width:100%;height:360px;overflow:auto;margin:0;padding:10px;text-align:left;white-space:pre-wrap;color:#fff}
+.info{display:grid;grid-template-columns:auto 1fr;gap:5px 9px;font-size:12px}.info span{color:var(--muted);word-break:break-all}
+.statusbar{display:flex;justify-content:space-between;gap:10px;padding:6px 10px;border-top:1px solid var(--line2);font-size:12px;color:var(--muted);background:#050209}
+.empty{height:100%;display:grid;place-items:center;color:var(--muted);text-align:center;padding:30px}
+.ctx-menu{position:fixed;z-index:999999;min-width:230px;background:#12091b;border:1px solid var(--line);box-shadow:0 0 24px rgba(164,92,255,.35),inset 0 0 18px rgba(164,92,255,.08);padding:6px;display:none;color:var(--text)}
+.ctx-menu.open{display:block}.ctx-head{padding:7px 9px;color:var(--muted);font-size:11px;border-bottom:1px solid var(--line2);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ctx-item{width:100%;display:flex;align-items:center;gap:9px;border:0;background:transparent;color:var(--text);text-align:left;padding:8px 9px;cursor:pointer}.ctx-item:hover{background:rgba(164,92,255,.18);text-shadow:0 0 10px var(--accent)}.ctx-item.danger{color:#ffd1df}.ctx-item.danger:hover{background:rgba(255,70,120,.22)}.ctx-sep{height:1px;background:var(--line2);margin:5px 0}
+.modal-backdrop{position:fixed;inset:0;z-index:999998;background:rgba(0,0,0,.62);display:none;align-items:center;justify-content:center;padding:20px}
+.modal-backdrop.open{display:flex}
+.modal{width:min(620px,calc(100vw - 40px));border:1px solid var(--line);background:#0a0410;box-shadow:0 0 30px rgba(164,92,255,.38);padding:14px}
+.modal h2{margin:0 0 8px;font-size:18px;letter-spacing:.08em}.modal p{color:var(--muted);font-size:13px;line-height:1.4}.modal textarea{min-height:160px;resize:vertical}.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+.hidden-file{display:none}
+@media(max-width:1100px){.main{grid-template-columns:220px 1fr}.preview{display:none}.toolbar{grid-template-columns:1fr}.view{flex-wrap:wrap}}@media(max-width:780px){body{overflow:auto}.fe-shell{height:auto}.main{grid-template-columns:1fr}.side{border-right:0;border-bottom:1px solid var(--line2);max-height:220px}.head{display:none}.details .item{grid-template-columns:1fr}}
+/* Remove redundant in-module FileExplorer banner.
+   The LMI window titlebar already identifies this module. */
+.fe-title{
+  display:none !important;
+  height:0 !important;
+  min-height:0 !important;
+  max-height:0 !important;
+  padding:0 !important;
+  margin:0 !important;
+  border:0 !important;
+  overflow:hidden !important;
+}
+
+/* Original layout was: module banner / toolbar / content.
+   After hiding banner, make it: toolbar / content. */
+.fe-shell{
+  grid-template-rows:auto 1fr !important;
+}
+</style>
+</head>
+<body>
+<div class="fe-shell">
+<header class="fe-title"><div><h1>FileExplorer.LMX</h1><small>LMC jailed /assets file manager</small></div><div class="hint">Right-click inside the file area for actions.</div></header>
+<section class="toolbar">
+  <div class="nav"><span id="back" class="tool">←</span><span id="forward" class="tool">→</span><span id="up" class="tool">↑</span></div>
+  <div class="address"><span class="root">LMC:</span><input id="address" value="LMC:/lmi/assets"><span id="go" class="tool">Go</span></div>
+  <div class="view"><input id="filter" placeholder="search"><label class="mini-label">View</label><select id="viewSelect"><option value="list">List</option><option value="grid">Grid</option></select><label class="mini-label">Size</label><input id="gridSize" type="range" min="96" max="220" step="8"><label class="mini-label">Sort</label><select id="sortSelect"><option value="name-asc">A → Z</option><option value="name-desc">Z → A</option><option value="type-asc">Type</option><option value="size-desc">Size ↓</option><option value="size-asc">Size ↑</option><option value="date-desc">Newest</option><option value="date-asc">Oldest</option></select></div>
+</section>
+<main class="main">
+<aside class="side"><div class="tree-title">DIRECTORIES</div><div id="tree"></div><div class="tree-title">CURRENT</div><div class="field"><label>Folder</label><input id="uploadTarget" readonly></div><p class="muted" style="font-size:12px;line-height:1.35">Jailed to <code>/lmi/assets</code>. Right-click folders/files for operations.</p></aside>
+<section class="content"><nav id="crumbs" class="crumbs"></nav><div class="head"><div>Name</div><div>Type</div><div>Size</div><div>Modified</div></div><div id="files" class="list details"></div><footer class="statusbar"><span id="count">0 items</span><span id="currentPath">LMC:/lmi/assets</span><span id="status">Ready.</span></footer></section>
+<aside class="preview"><h2>Preview</h2><div id="previewBox" class="preview-box"><span class="muted">Select an asset.</span></div><div id="info" class="info"></div></aside>
+</main>
+</div>
+<input id="filePicker" class="hidden-file" type="file" accept="image/*,.json,.txt,.csv,.md,.mp3,.wav,.ogg,.mp4,.webm,.glb,.gltf,.obj,.mtl,.pdf">
+<div id="ctxMenu" class="ctx-menu" role="menu">
+  <div id="ctxHead" class="ctx-head">LMC:/lmi/assets</div>
+  <button class="ctx-item" data-act="open">▸ Open / Preview</button>
+  <button class="ctx-item" data-act="copy">⧉ Copy Path</button>
+  <div class="ctx-sep"></div>
+  <button class="ctx-item" data-act="newFolder">＋ New Folder Here</button>
+  <button class="ctx-item" data-act="newText">TXT New Text File Here</button>
+  <button class="ctx-item" data-act="upload">⇧ Upload Here</button>
+  <div class="ctx-sep"></div>
+  <button class="ctx-item" data-act="rename">✎ Rename</button>
+  <button class="ctx-item" data-act="move">⇄ Move</button>
+  <button class="ctx-item danger" data-act="delete">× Delete</button>
+  <div class="ctx-sep"></div>
+  <button class="ctx-item" data-act="refresh">↻ Refresh</button>
+</div>
+<div id="modalLayer" class="modal-backdrop"><div class="modal"><h2 id="modalTitle">Action</h2><div id="modalBody"></div><div class="modal-actions"><button id="modalCancel" class="btn secondary">Cancel</button><button id="modalOk" class="btn good">Confirm</button></div></div></div>
+<script>
+const ROOT='/lmi/assets', DRIVE='LMC:';
+let allFiles=[], allDirs=[], currentDir=ROOT, selected=null, history=[ROOT], historyIndex=0, ctxTarget=null, uploadContextDir=ROOT;
+let viewMode=localStorage.getItem('LMI_FILEEXPLORER_VIEW')||'list'; if(viewMode==='details')viewMode='list'; if(viewMode==='tiles')viewMode='grid';
+let sortMode=localStorage.getItem('LMI_FILEEXPLORER_SORT')||'name-asc';
+let gridPx=Number(localStorage.getItem('LMI_FILEEXPLORER_GRID_SIZE')||140);
+
+function cleanSlash(s){return String(s||'').replace(/\\/g,'/').replace(/\/+/g,'/')}
+function normalizeDir(p){p=cleanSlash(p).trim();if(/^lmc:/i.test(p))p=p.replace(/^lmc:/i,'');if(!p.startsWith('/'))p=ROOT+'/'+p;if(p==='/')p=ROOT;if(!p.startsWith(ROOT))p=ROOT;p=p.replace(/\/$/,'');return p||ROOT}
+function relDir(p){p=normalizeDir(p);return p===ROOT?'':p.slice(ROOT.length).replace(/^\//,'')}
+function parentDir(p){p=normalizeDir(p);if(p===ROOT)return ROOT;return p.split('/').slice(0,-1).join('/')||ROOT}
+function dirname(path){path=cleanSlash(path);return path.split('/').slice(0,-1).join('/')||ROOT}
+function basename(path){return cleanSlash(path).split('/').filter(Boolean).pop()||path}
+function extType(name){const e=(name.split('.').pop()||'').toLowerCase();return e?e.toUpperCase():'FILE'}
+function formatSize(n){n=Number(n)||0;if(n<1024)return n+' B';if(n<1024*1024)return(n/1024).toFixed(1)+' KB';return(n/1024/1024).toFixed(2)+' MB'}
+function setStatus(msg,cls=''){
+  const el=document.getElementById('status');
+  if(!el)return;
+  el.textContent=msg||'Ready.';
+  el.style.color=cls==='bad'?'#ff9db8':cls==='good'?'#88ffbd':'var(--muted)';
+}
+function itemDate(it){const raw=(it.file&&it.file.updatedAt)||it.updatedAt||0;const t=Date.parse(raw);return Number.isFinite(t)?t:0}
+function itemSize(it){return Number((it.file&&it.file.size)||it.size||0)||0}
+function itemType(it){if(it.kind==='dir')return '0-folder';return extType(it.name||'')}
+function sortName(a,b){return a.name.localeCompare(b.name,undefined,{numeric:true,sensitivity:'base'})}
+function sortItems(items){return items.sort((a,b)=>{if(a.kind!==b.kind)return a.kind==='dir'?-1:1;if(sortMode==='name-desc')return -sortName(a,b);if(sortMode==='type-asc')return itemType(a).localeCompare(itemType(b))||sortName(a,b);if(sortMode==='size-desc')return itemSize(b)-itemSize(a)||sortName(a,b);if(sortMode==='size-asc')return itemSize(a)-itemSize(b)||sortName(a,b);if(sortMode==='date-desc')return itemDate(b)-itemDate(a)||sortName(a,b);if(sortMode==='date-asc')return itemDate(a)-itemDate(b)||sortName(a,b);return sortName(a,b)})}
+function fileDirs(){const dirs=new Set([ROOT]);allDirs.forEach(d=>dirs.add(normalizeDir(d.path||d.relPath||d)));allFiles.forEach(f=>{let d=dirname(f.path);while(d&&d.startsWith(ROOT)){dirs.add(d);if(d===ROOT)break;d=parentDir(d)}});return Array.from(dirs).sort((a,b)=>a.localeCompare(b))}
+function immediateChildren(dir){dir=normalizeDir(dir);const dirs=new Map(),files=[];allDirs.forEach(d=>{const p=normalizeDir(d.path);if(parentDir(p)===dir&&p!==dir)dirs.set(p,{kind:'dir',name:basename(p),path:p})});allFiles.forEach(f=>{const fd=dirname(f.path);if(fd===dir)files.push({kind:'file',name:f.name,path:f.path,file:f,type:f.type,size:f.size});else if(fd.startsWith(dir+'/')){const first=fd.slice(dir.length+1).split('/')[0];const p=dir+'/'+first;dirs.set(p,{kind:'dir',name:first,path:p})}});return[...dirs.values(),...files].sort((a,b)=>a.name.localeCompare(b.name))}
+function visibleItems(){const q=filter.value.trim().toLowerCase();let items=immediateChildren(currentDir);if(q)items=items.filter(it=>it.name.toLowerCase().includes(q)||it.path.toLowerCase().includes(q));return sortItems(items)}
+function goDir(dir,push=true){currentDir=normalizeDir(dir);selected=null;if(push){history=history.slice(0,historyIndex+1);history.push(currentDir);historyIndex=history.length-1}address.value=DRIVE+currentDir;uploadTarget.value=relDir(currentDir);currentPath.textContent=DRIVE+currentDir;render()}
+function setPreviewEmpty(){previewBox.innerHTML='<span class="muted">Select an asset.</span>';info.innerHTML=''}
+function clearSelection(){
+  selected=null;
+  document.querySelectorAll('.item').forEach(x=>x.classList.remove('selected'));
+  setPreviewEmpty();
+}
+function renderInfo(obj){info.innerHTML=`<b>Name</b><span>${obj.name}</span><b>Path</b><span>${obj.path}</span><b>Folder</b><span>${DRIVE}${dirname(obj.path)}</span><b>Type</b><span>${extType(obj.name)}</span><b>Size</b><span>${formatSize(obj.size)}</span>`}
+async function openInPage(file){selected=file;renderInfo(file);const ext=(file.name.split('.').pop()||'').toLowerCase();if(['png','jpg','jpeg','webp','gif','svg'].includes(ext)){previewBox.innerHTML=`<img src="${file.path}" alt="">`;return}if(['txt','json','md','csv','css','html','js','xml','yaml','yml'].includes(ext)){try{const txt=await fetch(file.path).then(r=>r.text());previewBox.innerHTML=`<pre></pre>`;previewBox.querySelector('pre').textContent=txt}catch{previewBox.innerHTML='<span class="muted">Could not load text preview.</span>'}return}if(['pdf'].includes(ext)){previewBox.innerHTML=`<iframe src="${file.path}"></iframe>`;return}if(['mp3','wav','ogg'].includes(ext)){previewBox.innerHTML=`<audio src="${file.path}" controls style="width:100%"></audio>`;return}if(['mp4','webm'].includes(ext)){previewBox.innerHTML=`<video src="${file.path}" controls style="max-width:100%;max-height:360px"></video>`;return}previewBox.innerHTML=`<span class="muted">No preview for ${extType(file.name)}.</span>`}
+function selectItem(item){if(!item)return;if(item.kind==='dir'){goDir(item.path,true);return}document.querySelectorAll('.item').forEach(x=>x.classList.remove('selected'));const el=document.querySelector(`.item[data-path="${CSS.escape(item.path)}"]`);if(el)el.classList.add('selected');openInPage(item.file||item)}
+async function copyText(text){if(!text){setStatus('Nothing selected.','bad');return}try{await navigator.clipboard.writeText(text);setStatus('Copied: '+text,'good')}catch{setStatus('Copy failed.','bad')}}
+function renderTree(){const dirs=fileDirs();tree.innerHTML=dirs.map(d=>{const rel=relDir(d),depth=rel?rel.split('/').length:0,name=d===ROOT?'assets':basename(d);return `<div class="tree-node tree-indent ${d===currentDir?'active':''}" style="--depth:${depth}" data-dir="${d}"><span>${d===ROOT?'▣':'▸'}</span><span class="tree-name">${name}</span></div>`}).join('');tree.querySelectorAll('[data-dir]').forEach(el=>el.onclick=()=>goDir(el.dataset.dir,true))}
+function renderCrumbs(){const parts=relDir(currentDir).split('/').filter(Boolean);let built=ROOT;const out=[`<button class="crumb ${parts.length?'':'current'}" data-dir="${ROOT}">${DRIVE}/assets</button>`];parts.forEach((part,idx)=>{built+='/'+part;out.push(`<span class="muted">/</span><button class="crumb ${idx===parts.length-1?'current':''}" data-dir="${built}">${part}</button>`)});crumbs.innerHTML=out.join('');crumbs.querySelectorAll('[data-dir]').forEach(b=>b.onclick=()=>goDir(b.dataset.dir,true))}
+function renderFiles(){const items=visibleItems();files.className='list '+(viewMode==='grid'?'grid':'details');document.documentElement.style.setProperty('--fe-grid-size',gridPx+'px');files.innerHTML=items.length?items.map(it=>{if(it.kind==='dir')return `<div class="item" data-kind="dir" data-path="${it.path}"><div class="namecell"><div class="ico">📁</div><div><div class="filename">${it.name}</div><div class="pathline">${DRIVE}${it.path}</div></div></div><div class="extra">Folder</div><div class="extra">—</div><div class="extra">—</div></div>`;return `<div class="item" data-kind="file" data-path="${it.path}"><div class="namecell"><div class="ico"><img src="${it.path}" loading="lazy"></div><div><div class="filename">${it.name}</div><div class="pathline">${it.path}</div></div></div><div class="extra">${extType(it.name)}</div><div class="extra">${formatSize(it.size)}</div><div class="extra">${it.file?.updatedAt?new Date(it.file.updatedAt).toLocaleDateString():'asset'}</div></div>`}).join(''):`<div class="empty">No assets in this folder. Right-click to create or upload.</div>`;files.querySelectorAll('.item').forEach(el=>{el.onclick=()=>{const item=items.find(x=>x.path===el.dataset.path);if(item)selectItem(item)}});count.textContent=`${items.length} item${items.length===1?'':'s'} / ${allFiles.length} total files`}
+function render(){renderTree();renderCrumbs();renderFiles();if(!selected)setPreviewEmpty()}
+
+files.addEventListener('click',e=>{
+  if(e.target.closest('.item'))return;
+  clearSelection();
+});
+async function loadFiles(){setStatus('Loading /assets...');const res=await fetch('/api/files/assets');const data=await res.json();if(!data.ok)throw new Error(data.error||'Failed to load files.');allDirs=(data.dirs||[]).map(d=>({...d,path:cleanSlash(d.path||('/assets/'+(d.relPath||''))),name:d.name||basename(d.path||d.relPath||'')}));allFiles=(data.files||[]).map(f=>({...f,path:cleanSlash(f.path),name:f.name||basename(f.path),type:f.type||extType(f.name||f.path)}));setStatus('Loaded '+allFiles.length+' files.','good');goDir(currentDir,false)}
+async function apiPost(url,payload){const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload||{})});const data=await res.json().catch(()=>({ok:false,error:'Bad JSON'}));if(!data.ok)throw new Error(data.error||'Operation failed.');return data}
+function showModal(title,body,okText='Confirm'){return new Promise(resolve=>{modalTitle.textContent=title;modalBody.innerHTML=body;modalOk.textContent=okText;modalLayer.classList.add('open');const done=v=>{modalLayer.classList.remove('open');modalOk.onclick=null;modalCancel.onclick=null;resolve(v)};modalCancel.onclick=()=>done(null);modalOk.onclick=()=>done(true);setTimeout(()=>modalBody.querySelector('input,textarea')?.focus(),30)})}
+async function promptValue(title,label,value='',ok='Confirm'){const yes=await showModal(title,`<div class="field"><label>${label}</label><input id="modalInput" value="${String(value).replaceAll('"','&quot;')}"></div>`,ok);if(!yes)return null;return modalInput.value.trim()}
+async function promptTextFile(){const dir=targetDir();const base=relDir(dir);const yes=await showModal('New Text File',`<div class="field"><label>Filename</label><input id="modalName" value="notes.txt"></div><div class="field"><label>Initial Content</label><textarea id="modalContent"></textarea></div>`,'Create');if(!yes)return;const name=modalName.value.trim();if(!name)return;const rel=(base?base+'/':'')+name;const data=await apiPost('/api/files/write',{path:rel,content:modalContent.value,overwrite:false});await loadFiles();const found=allFiles.find(x=>x.path===data.file.path);if(found)selectItem({kind:'file',file:found,path:found.path,name:found.name});setStatus('Created '+data.file.path,'good')}
+async function promptFolder(){const dir=targetDir();const base=relDir(dir);const name=await promptValue('New Folder','Folder name','LMCEO','Create');if(!name)return;const p=(base?base+'/':'')+name;await apiPost('/api/files/mkdir',{path:p});await loadFiles();goDir(ROOT+'/'+p,true);setStatus('Created '+DRIVE+'/'+p,'good')}
+function targetDir(){if(ctxTarget&&ctxTarget.kind==='dir')return ctxTarget.path;return currentDir}
+function currentTarget(){return ctxTarget || (selected?{kind:'file',path:selected.path,name:selected.name,file:selected}:null)}
+async function renameTarget(){const item=currentTarget();if(!item){setStatus('Right-click or select something first.','bad');return}const oldName=basename(item.path);const name=await promptValue('Rename',`New name for ${oldName}`,oldName,'Rename');if(!name||name===oldName)return;const dest=relDir(dirname(item.path));const to=(dest?dest+'/':'')+name;const data=await apiPost('/api/files/move',{src:item.path,dest:to});selected=null;await loadFiles();const found=allFiles.find(x=>x.path===data.to);if(found)selectItem({kind:'file',file:found,path:found.path,name:found.name});setStatus('Renamed.','good')}
+async function moveTarget(){const item=currentTarget();if(!item){setStatus('Right-click or select something first.','bad');return}const dir=await promptValue('Move',`Destination folder under LMC:/lmi/assets for ${basename(item.path)}`,relDir(dirname(item.path)),'Move');if(dir===null)return;const to=(dir?dir.replace(/^\/?assets\/?/,'').replace(/\/$/,'')+'/':'')+basename(item.path);const data=await apiPost('/api/files/move',{src:item.path,dest:to});selected=null;await loadFiles();const found=allFiles.find(x=>x.path===data.to);if(found)selectItem({kind:'file',file:found,path:found.path,name:found.name});setStatus('Moved.','good')}
+async function deleteTarget(){const item=currentTarget();if(!item){setStatus('Right-click or select something first.','bad');return}const label=item.kind==='dir'?DRIVE+item.path:item.path;const yes=await showModal('Confirm Delete',`<p>Delete this ${item.kind}?</p><p><b>${label}</b></p><p>This cannot be undone from inside LMI.</p>`,'Delete');if(!yes)return;await apiPost('/api/files/delete',{path:item.path});selected=null;await loadFiles();setStatus('Deleted '+label,'good')}
+async function uploadHere(){uploadContextDir=targetDir();const yes=await showModal('Upload File',`<p>Destination: <b>${DRIVE}${uploadContextDir}</b></p><div class="field"><label>Optional filename base</label><input id="modalUploadName" placeholder="leave blank to preserve filename"></div><p class="muted">Choose the file after confirming.</p>`,'Choose File');if(!yes)return;filePicker.dataset.filename=modalUploadName.value.trim();filePicker.click()}
+filePicker.onchange=async()=>{const f=filePicker.files[0];if(!f)return;const fd=new FormData();fd.append('file',f);fd.append('subdir',relDir(uploadContextDir));fd.append('filename',filePicker.dataset.filename||'');setStatus('Uploading...');const res=await fetch('/api/files/upload',{method:'POST',body:fd});const data=await res.json();if(!data.ok){setStatus(data.error||'Upload failed.','bad');return}filePicker.value='';await loadFiles();const found=allFiles.find(x=>x.path===data.file.path);if(found)selectItem({kind:'file',file:found,path:found.path,name:found.name});setStatus('Uploaded '+data.file.path,'good')}
+function contextItemFromEvent(e){const row=e.target.closest?.('.item');if(!row)return null;return visibleItems().find(x=>x.path===row.dataset.path)||null}
+function showContextMenu(e,item){e.preventDefault();e.stopPropagation();ctxTarget=item||null;ctxHead.textContent=item?(item.kind==='dir'?DRIVE+item.path:item.path):DRIVE+currentDir;ctxMenu.querySelector('[data-act="open"]').style.display=item?'flex':'none';ctxMenu.querySelector('[data-act="copy"]').style.display=item?'flex':'none';ctxMenu.querySelector('[data-act="rename"]').style.display=item?'flex':'none';ctxMenu.querySelector('[data-act="move"]').style.display=item?'flex':'none';ctxMenu.querySelector('[data-act="delete"]').style.display=item?'flex':'none';ctxMenu.classList.add('open');const rect=ctxMenu.getBoundingClientRect(),pad=8;let x=e.clientX,y=e.clientY;if(x+rect.width+pad>innerWidth)x=innerWidth-rect.width-pad;if(y+rect.height+pad>innerHeight)y=innerHeight-rect.height-pad;ctxMenu.style.left=Math.max(pad,x)+'px';ctxMenu.style.top=Math.max(pad,y)+'px'}
+function hideContextMenu(){ctxMenu.classList.remove('open');ctxTarget=null}
+async function runContextAction(act){hideContextMenu();try{if(act==='open'){const it=currentTarget();if(it)selectItem(it)}if(act==='copy'){const it=currentTarget();if(it)await copyText(it.kind==='dir'?DRIVE+it.path:it.path)}if(act==='newFolder')await promptFolder();if(act==='newText')await promptTextFile();if(act==='upload')await uploadHere();if(act==='rename')await renameTarget();if(act==='move')await moveTarget();if(act==='delete')await deleteTarget();if(act==='refresh')await loadFiles()}catch(e){setStatus(e.message||String(e),'bad')}}
+function setView(v){viewMode=v==='grid'?'grid':'list';localStorage.setItem('LMI_FILEEXPLORER_VIEW',viewMode);viewSelect.value=viewMode;renderFiles()}
+function setSort(v){sortMode=v||'name-asc';localStorage.setItem('LMI_FILEEXPLORER_SORT',sortMode);sortSelect.value=sortMode;renderFiles()}
+function setGridSize(v){gridPx=Math.max(96,Math.min(220,Number(v)||140));localStorage.setItem('LMI_FILEEXPLORER_GRID_SIZE',String(gridPx));document.documentElement.style.setProperty('--fe-grid-size',gridPx+'px');gridSize.value=gridPx;renderFiles()}
+filter.oninput=renderFiles;go.onclick=()=>goDir(address.value,true);address.onkeydown=e=>{if(e.key==='Enter')goDir(address.value,true)};up.onclick=()=>goDir(parentDir(currentDir),true);back.onclick=()=>{if(historyIndex>0){historyIndex--;goDir(history[historyIndex],false)}};forward.onclick=()=>{if(historyIndex<history.length-1){historyIndex++;goDir(history[historyIndex],false)}};viewSelect.value=viewMode;viewSelect.onchange=()=>setView(viewSelect.value);sortSelect.value=sortMode;sortSelect.onchange=()=>setSort(sortSelect.value);gridSize.value=gridPx;gridSize.oninput=()=>setGridSize(gridSize.value);document.addEventListener('click',e=>{if(!e.target.closest?.('#ctxMenu'))hideContextMenu()},true);document.addEventListener('keydown',e=>{if(e.key==='Escape'){hideContextMenu();modalLayer.classList.remove('open')}});document.addEventListener('contextmenu',e=>{
+  if(!e.target.closest?.('.fe-shell'))return;
+  const item=contextItemFromEvent(e);
+  if(!item)clearSelection();
+  showContextMenu(e,item);
+},true);ctxMenu.querySelectorAll('[data-act]').forEach(btn=>btn.addEventListener('click',()=>runContextAction(btn.dataset.act)));
+let __feBooted=false;
+function bootFileExplorer(){
+  if(__feBooted)return;
+  __feBooted=true;
+  document.documentElement.style.setProperty('--fe-grid-size',gridPx+'px');
+  loadFiles().catch(e=>setStatus(e.message||String(e),'bad'));
+}
+
+try{
+  LMI.ready('fileExplorer',bootFileExplorer);
+}catch(e){}
+
+document.addEventListener('DOMContentLoaded',()=>setTimeout(bootFileExplorer,80));
+setTimeout(bootFileExplorer,500);
+</script>
+<script src="fileExplorer-inline-folder.js?v=1778646882"></script>
+<script src="fileExplorer-context-fix.js?v=1778648731"></script>
+</body>
+</html>

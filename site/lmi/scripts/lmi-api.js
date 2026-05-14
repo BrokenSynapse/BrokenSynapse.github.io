@@ -8,15 +8,38 @@
   function getRelayUrl(){ return normalizeRelayUrl(localStorage.getItem(window.LMI_CONFIG.localKeys.relayUrl)||DEFAULT_RELAY); }
   function setRelayUrl(url){ localStorage.setItem(window.LMI_CONFIG.localKeys.relayUrl,normalizeRelayUrl(url)); localStorage.setItem(window.LMI_CONFIG.localKeys.relaySavedAt,new Date().toISOString()); }
   function forgetRelayUrl(){ localStorage.removeItem(window.LMI_CONFIG.localKeys.relayUrl); localStorage.removeItem(window.LMI_CONFIG.localKeys.relaySavedAt); }
-  function isAllowedRelayUrl(url){
-    url=normalizeRelayUrl(url);
-    if(url.startsWith('/api/')) return true;
-    try{
-      const u=new URL(url, location.origin);
-      if(u.origin===location.origin && u.pathname.startsWith('/api/')) return true;
-      return u.protocol==='https:' && (u.hostname==='script.google.com'||u.hostname==='script.googleusercontent.com') && u.pathname.includes('/macros/');
-    }catch(e){ return false; }
+  function isAllowedRelayUrl(relayUrl){
+  if(!relayUrl) return false;
+
+  const raw = String(relayUrl).trim();
+
+  // Preferred VM/local API forms.
+  if(raw === '/api/relay') return true;
+  if(raw.startsWith('/api/')) return true;
+
+  try {
+    const u = new URL(raw, window.location.origin);
+
+    // Allow same-origin VM API.
+    if(u.origin === window.location.origin && u.pathname.startsWith('/api/')) return true;
+
+    // Allow the actual BrokenSynapse public API URL.
+    if((u.hostname === 'brokensynapse.us' || u.hostname === 'www.brokensynapse.us') && u.pathname.startsWith('/api/')) return true;
+
+    // Legacy Google Apps Script support.
+    if(
+      u.protocol === 'https:' &&
+      (u.hostname === 'script.google.com' || u.hostname === 'script.googleusercontent.com') &&
+      u.pathname.includes('/macros/')
+    ){
+      return true;
+    }
+
+    return false;
+  } catch {
+    return false;
   }
+}
   async function callRelay(action,payload,user){
     const relayUrl=getRelayUrl();
     if(!isAllowedRelayUrl(relayUrl)) throw new Error('Relay rejected: expected /api/relay, same-origin /api/*, or a legacy Google Apps Script URL.');

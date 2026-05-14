@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>L.M.I. Account Provisioning</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root{
+      --bg:#050108;
+      --panel:#09020f;
+      --panel2:#10031c;
+      --line:#9b55ff;
+      --line2:#6f2bd6;
+      --text:#fff;
+      --muted:#cdb8ff;
+      --bad:#ff8ab3;
+      --good:#88ffbd;
+      --glow:0 0 18px rgba(164,92,255,.55);
+      --soft:0 0 34px rgba(164,92,255,.22);
+    }
+
+    *{box-sizing:border-box}
+
+    html,body{
+      min-height:100%;
+      margin:0;
+      background:
+        radial-gradient(circle at 20% 12%, rgba(112,39,190,.22), transparent 34%),
+        radial-gradient(circle at 80% 78%, rgba(164,92,255,.13), transparent 38%),
+        linear-gradient(180deg,#090014,#020005 70%);
+      color:var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+
+    body{
+      padding:28px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+
+    .shell{
+      width:min(1040px,100%);
+      border:1px solid var(--line);
+      background:rgba(3,0,8,.86);
+      box-shadow:var(--soft);
+      padding:28px;
+      position:relative;
+    }
+
+    .shell:before{
+      content:"";
+      position:absolute;
+      inset:0 0 auto 0;
+      height:4px;
+      background:linear-gradient(90deg,var(--line),transparent,var(--line));
+      opacity:.9;
+    }
+
+    h1{
+      margin:0 0 6px;
+      font-size:30px;
+      letter-spacing:.26em;
+      text-transform:uppercase;
+      text-shadow:var(--glow);
+    }
+
+    .sub{
+      color:var(--muted);
+      margin:0 0 24px;
+      line-height:1.45;
+    }
+
+    .grid{
+      display:grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap:18px;
+      align-items:start;
+    }
+
+    .card{
+      border:1px solid var(--line2);
+      background:rgba(5,0,10,.72);
+      box-shadow:0 0 22px rgba(164,92,255,.16);
+      padding:18px;
+    }
+
+    .card h2{
+      margin:0 0 14px;
+      letter-spacing:.18em;
+      font-size:20px;
+      text-transform:uppercase;
+    }
+
+    .form-grid{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:12px;
+    }
+
+    .field{display:flex; flex-direction:column; gap:6px}
+    .wide{grid-column:1 / -1}
+
+    label{
+      font-size:12px;
+      font-weight:900;
+      letter-spacing:.12em;
+      text-transform:uppercase;
+      color:#fff;
+    }
+
+    input,select,textarea{
+      width:100%;
+      border:1px solid var(--line);
+      background:#05020a;
+      color:#fff;
+      padding:11px 12px;
+      font:inherit;
+      outline:none;
+      min-height:43px;
+    }
+
+    textarea{
+      min-height:80px;
+      resize:vertical;
+    }
+
+    input:focus,select:focus,textarea:focus{
+      box-shadow:var(--glow);
+      border-color:#cda8ff;
+    }
+
+    .hint{
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.4;
+    }
+
+    .actions{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      margin-top:16px;
+      align-items:center;
+    }
+
+    button,a.button{
+      border:1px solid var(--line);
+      background:#10031c;
+      color:#fff;
+      text-decoration:none;
+      padding:11px 14px;
+      font:inherit;
+      font-weight:900;
+      cursor:pointer;
+      box-shadow:0 0 16px rgba(164,92,255,.18);
+    }
+
+    button.primary{
+      background:linear-gradient(180deg,#a45cff,#722ae0);
+      box-shadow:0 0 22px rgba(164,92,255,.38);
+    }
+
+    button:hover,a.button:hover{
+      box-shadow:var(--glow);
+    }
+
+    .status{
+      min-height:22px;
+      font-weight:900;
+      color:var(--muted);
+    }
+
+    .preview{
+      display:grid;
+      gap:10px;
+      color:var(--muted);
+      font-size:13px;
+      line-height:1.5;
+    }
+
+    .kv{
+      border:1px solid rgba(155,85,255,.35);
+      padding:10px;
+      background:rgba(255,255,255,.025);
+      overflow-wrap:anywhere;
+    }
+
+    .kv b{
+      color:#fff;
+      display:block;
+      margin-bottom:3px;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+      font-size:11px;
+    }
+
+    .danger{
+      color:var(--bad);
+    }
+
+    .good{
+      color:var(--good);
+    }
+
+    @media(max-width:860px){
+      body{padding:12px}
+      .shell{padding:18px}
+      .grid{grid-template-columns:1fr}
+      .form-grid{grid-template-columns:1fr}
+      h1{font-size:22px; letter-spacing:.16em}
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <h1>Account Provisioning</h1>
+    <p class="sub">Create a new L.M.I. employee login without touching SQLite manually.</p>
+
+    <div class="grid">
+      <section class="card">
+        <h2>New Employee</h2>
+
+        <form id="createForm" autocomplete="off">
+          <div class="form-grid">
+            <div class="field">
+              <label for="tag">Employee Tag</label>
+              <input id="tag" name="tag" placeholder="e.g. LMCEO2" required maxlength="32">
+              <div class="hint">Login username. Letters/numbers/underscore/dash only.</div>
+            </div>
+
+            <div class="field">
+              <label for="hash">Hash / Password</label>
+              <input id="hash" name="hash" placeholder="temporary hash" required maxlength="128">
+              <div class="hint">This is the login hash/password field.</div>
+            </div>
+
+            <div class="field wide">
+              <label for="displayName">Display Name</label>
+              <input id="displayName" name="displayName" placeholder="e.g. Charter Davis" required maxlength="80">
+            </div>
+
+            <div class="field">
+              <label for="access">Access Level</label>
+              <select id="access" name="access">
+                <option value="User" selected>User</option>
+                <option value="Employee">Employee</option>
+                <option value="Manager">Manager</option>
+                <option value="Admin">Admin</option>
+              </select>
+              <div class="hint danger">Admin should only be used for trusted accounts.</div>
+            </div>
+
+            <div class="field">
+              <label for="status">Status</label>
+              <select id="status" name="status">
+                <option value="Active" selected>Active</option>
+                <option value="Training">Training</option>
+                <option value="Suspended">Suspended</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="occupation">Occupation</label>
+              <select id="occupation" name="occupation" required>
+                <option value="">Select occupation...</option>
+              </select>
+              <div class="hint">Pulled from existing account occupation presets.</div>
+            </div>
+
+            <div class="field">
+              <label for="currency">Currency</label>
+              <select id="currency" name="currency" required>
+                <option value="">Loading currencies...</option>
+              </select>
+              <div class="hint">Pulled from existing valid account currencies.</div>
+            </div>
+
+            <div class="field">
+              <label for="balance">Starting Balance</label>
+              <input id="balance" name="balance" type="number" step="0.01" value="0">
+            </div>
+
+            <div class="field">
+              <label for="bankAccountId">Bank Account ID</label>
+              <input id="bankAccountId" name="bankAccountId" placeholder="e.g. ACC-LMCEO-001" maxlength="64" required>
+            </div>
+
+            <div class="field wide">
+              <label for="avatar">Avatar Path</label>
+              <input id="avatar" name="avatar" placeholder="/lmi/assets/profiles/name.png">
+            </div>
+
+            <div class="field wide">
+              <label for="wallpaper">Wallpaper Path</label>
+              <input id="wallpaper" name="wallpaper" placeholder="/lmi/assets/images/wallpaper.png">
+            </div>
+          </div>
+
+          <div class="actions">
+            <button class="primary" type="submit">Create Account</button>
+            <button type="button" id="fillDemo">Quick Fill Test User</button>
+            <a class="button" href="/lmi/">Back to Login</a>
+            <span id="statusLine" class="status" style="display:inline-block;min-width:260px;"></span>
+          </div>
+        </form>
+      </section>
+
+      <aside class="card">
+        <h2>Preview</h2>
+        <div class="preview">
+          <div class="kv"><b>Employee Tag</b><span id="pTag">—</span></div>
+          <div class="kv"><b>Display Name</b><span id="pName">—</span></div>
+          <div class="kv"><b>Access</b><span id="pAccess">User</span></div>
+          <div class="kv"><b>Login</b><span id="pLogin">Create account, then return to login and use tag/hash.</span></div>
+          <div class="kv"><b>Defaults</b><span>Icon size 60, grid snap on, no ambience, empty avatar/wallpaper unless provided.</span></div>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <script>
+    const $ = id => document.getElementById(id);
+
+    function cleanTag(v){
+      return String(v || '')
+        .trim()
+        .replace(/\s+/g,'_')
+        .replace(/[^A-Za-z0-9_-]/g,'')
+        .toUpperCase();
+    }
+
+    function cleanPath(v){
+      v = String(v || '').trim().replace(/\\\\/g,'/');
+      if(!v) return '';
+      v = v.replace(/^LMC:\\s*/i,'');
+      if(v.startsWith('/assets/')) v = '/lmi' + v;
+      if(v && !v.startsWith('/')){
+        v = '/lmi/assets/' + v.replace(/^lmi\\/assets\\//,'').replace(/^assets\\//,'');
+      }
+      return v.replace(/\\/+/g,'/');
+    }
+
+    function setStatus(msg, good=false){
+      const el = $('statusLine');
+      el.textContent = msg || '';
+      el.className = 'status ' + (good ? 'good' : msg ? 'danger' : '');
+    }
+
+
+    async function loadOccupationOptions(){
+      const sel = $('occupation');
+      if(!sel) return;
+
+      const previous = sel.value || '';
+
+      const fallback = [
+        'LMI Operator',
+        'LMI Employee',
+        'LMI Contractor',
+        'LMC CEO',
+        'Public Compound Marketplace',
+        'Snake Payout Labor',
+        'Body Status Tracker',
+        'Wallet and Account Ledger'
+      ];
+
+      try{
+        const res = await fetch('/api/relay', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({
+            action:'listAccountOptions',
+            payload:{},
+            user:{}
+          })
+        });
+
+        const data = await res.json().catch(()=>null);
+        const occupations = data?.ok && data?.data?.occupations?.length
+          ? data.data.occupations
+          : fallback;
+
+        sel.innerHTML = '<option value="">Select occupation...</option>' +
+          occupations
+            .filter(Boolean)
+            .map(o => `<option value="${String(o).replace(/"/g,'&quot;')}">${String(o)}</option>`)
+            .join('');
+
+        if(previous && occupations.includes(previous)){
+          sel.value = previous;
+        }
+      }catch(e){
+        sel.innerHTML = '<option value="">Select occupation...</option>' +
+          fallback.map(o => `<option value="${o}">${o}</option>`).join('');
+      }
+    }
+
+
+    function updatePreview(){
+      $('pTag').textContent = cleanTag($('tag').value) || '—';
+      $('pName').textContent = $('displayName').value.trim() || '—';
+      $('pAccess').textContent = $('access').value || 'User';
+    }
+
+    document.querySelectorAll('input,select,textarea').forEach(el=>{
+      el.addEventListener('input', updatePreview);
+      el.addEventListener('change', updatePreview);
+    });
+
+    $('tag').addEventListener('blur', () => {
+      $('tag').value = cleanTag($('tag').value);
+      updatePreview();
+    });
+
+    $('avatar').addEventListener('blur', () => $('avatar').value = cleanPath($('avatar').value));
+    $('wallpaper').addEventListener('blur', () => $('wallpaper').value = cleanPath($('wallpaper').value));
+
+    $('fillDemo').addEventListener('click', () => {
+      const n = Math.floor(Math.random() * 9000) + 1000;
+      $('tag').value = 'TEST' + n;
+      $('hash').value = '1969';
+      $('displayName').value = 'Test Operator ' + n;
+      $('access').value = 'User';
+      $('status').value = 'Active';
+      $('occupation').value = 'LMI Operator';
+      if($('currency')) $('currency').value = 'USD';
+      $('balance').value = '0';
+      $('bankAccountId').value = 'ACC-TEST-' + n;
+      $('avatar').value = '';
+      $('wallpaper').value = '';
+      updatePreview();
+    });
+
+    $('createForm').addEventListener('submit', async ev => {
+      ev.preventDefault();
+      setStatus('Creating...');
+
+      const payload = {
+        tag: cleanTag($('tag').value),
+        hash: $('hash').value,
+        displayName: $('displayName').value.trim(),
+        access: $('access').value,
+        status: $('status').value,
+        occupation: $('occupation').value.trim(),
+        currency: $('currency').value.trim() || 'USD',
+        balance: Number($('balance').value || 0),
+        bankAccountId: $('bankAccountId').value.trim(),
+        avatar: cleanPath($('avatar').value),
+        wallpaper: cleanPath($('wallpaper').value)
+      };
+
+      if(!payload.tag || !payload.hash || !payload.displayName || !payload.bankAccountId){
+        setStatus('Tag, hash, display name, and bank account ID are required.');
+        return;
+      }
+
+      try{
+        const res = await fetch('/api/relay', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({
+            action:'createAccount',
+            payload,
+            user:{}
+          })
+        });
+
+        const data = await res.json().catch(()=>({ok:false,error:'Bad JSON'}));
+
+        if(!data.ok){
+          throw new Error(data.error || 'Account creation failed.');
+        }
+
+        setStatus('Created. Return to login and sign in with the new tag/hash.', true);
+        $('pLogin').textContent = 'Ready: ' + payload.tag + ' / supplied hash';
+      }catch(e){
+        setStatus(e.message || String(e));
+      }
+    });
+
+    loadOccupationOptions().then(updatePreview);
+    updatePreview();
+  </script>
+<script src="scripts/lmi-create-account-options.js?v=1778653285"></script>
+<script src="scripts/lmi-create-account-submit-fix.js?v=1778653459"></script>
+</body>
+</html>

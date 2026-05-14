@@ -1,0 +1,155 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <title>Settings.LMX V2</title>
+  <link rel="stylesheet" href="settings-v2.css?v=1778690333">
+</head>
+<body>
+  <div class="sv2-shell">
+    <aside class="sv2-sidebar">
+      <div class="sv2-user-card">
+        <div class="sv2-avatar" id="sv2Avatar">ID</div>
+        <div>
+          <h1>Settings.LMX</h1>
+          <div class="sv2-user-line" id="sv2UserLine">Loading account...</div>
+        </div>
+      </div>
+
+      <nav class="sv2-tabs">
+        <button class="active" data-page="account"><span>ID</span>Account</button>
+        <button data-page="personalization"><span>TH</span>Personalization</button>
+        <button data-page="desktop"><span>DE</span>Desktop</button>
+        <button data-page="state"><span>{}</span>State</button>
+      </nav>
+    </aside>
+
+    <main class="sv2-main">
+      <section class="sv2-page active" data-page="account">
+        <header class="sv2-page-head">
+          <div>
+            <h2>Account</h2>
+            <p>Current employee identity and account defaults.</p>
+          </div>
+          <button class="good" id="saveAccountBtn">Save Account</button>
+        </header>
+
+        <div class="sv2-grid two">
+          <div class="sv2-card">
+            <h3>Identity</h3>
+            <label>Display Name<input id="displayNameInput"></label>
+            <label>Employee Tag<input id="tagInput"></label>
+            <label>Hash / Password<input id="hashInput" type="password"></label>
+            <label>Bank Account ID<input id="bankIdInput"></label>
+          </div>
+
+          <div class="sv2-card">
+            <h3>Classification</h3>
+            <label>Access Level<select id="accessSelect"></select></label>
+            <label>Status<select id="statusSelect"></select></label>
+            <label>Occupation<select id="occupationSelect"></select></label>
+            <label>Currency<select id="currencySelect"></select></label>
+          </div>
+        </div>
+      </section>
+
+      <section class="sv2-page" data-page="personalization">
+        <header class="sv2-page-head">
+          <div>
+            <h2>Personalization</h2>
+            <p>Avatar, wallpaper, ambience, and account theme.</p>
+          </div>
+          <button class="good" id="savePersonalizationBtn">Save Personalization</button>
+        </header>
+
+        <div class="sv2-card">
+          <h3>Avatar / Wallpaper</h3>
+          <div class="sv2-grid two">
+            <label>Avatar Path<input id="avatarInput" placeholder="/lmi/assets/images/avatar.png"></label>
+            <label>Wallpaper Path / URL<input id="wallpaperInput" placeholder="/lmi/assets/images/wallpaper.png"></label>
+          </div>
+          <div class="sv2-button-row">
+            <button id="previewWallpaperBtn">Preview Wallpaper</button>
+            <button class="good" id="saveWallpaperBtn">Save Wallpaper</button>
+            <button class="bad" id="clearWallpaperBtn">Clear</button>
+          </div>
+          <div class="sv2-wallpaper-preview" id="wallpaperPreview">
+            <span>Wallpaper preview</span>
+          </div>
+        </div>
+
+        <div class="sv2-card">
+          <h3>Ambience</h3>
+          <p class="sv2-muted">Optional account-saved background audio. Upload MP3/OGG/WAV through FileExplorer, then paste the copied path here.</p>
+          <label>Audio Path<input id="ambienceSrcInput" placeholder="/lmi/assets/ambience/file.mp3"></label>
+          <div class="sv2-inline">
+            <label class="check"><input id="ambienceEnabledInput" type="checkbox"> Enable ambience</label>
+            <label class="range">Volume: <strong id="ambienceVolumeLabel">5%</strong><input id="ambienceVolumeInput" type="range" min="0" max="100" value="5"></label>
+          </div>
+          <div class="sv2-button-row">
+            <button id="testAmbienceBtn">Test</button>
+            <button id="stopAmbienceBtn">Stop Local</button>
+            <button class="good" id="saveAmbienceBtn">Save Ambience</button>
+          </div>
+          <div class="sv2-status" id="ambienceStatus"></div>
+        </div>
+
+        <div class="sv2-card">
+          <h3>Theme Variables</h3>
+          <div class="sv2-theme-grid" id="themeGrid"></div>
+          <div class="sv2-button-row">
+            <button id="applyThemeBtn">Apply</button>
+            <button id="resetThemeBtn">Reset</button>
+            <button class="good" id="saveThemeBtn">Save Account Theme</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="sv2-page" data-page="desktop">
+        <header class="sv2-page-head">
+          <div>
+            <h2>Desktop</h2>
+            <p>Desktop behavior and shell presentation.</p>
+          </div>
+          <button class="good" id="saveDesktopBtn">Save Desktop</button>
+        </header>
+
+        <div class="sv2-grid two">
+          <div class="sv2-card">
+            <h3>Icons</h3>
+            <label class="range">Icon Size: <strong id="iconSizeLabel">60</strong><input id="iconSizeInput" type="range" min="44" max="120" value="72"></label>
+            <label class="check"><input id="gridSnapInput" type="checkbox"> Grid snap</label>
+            <label>Module Icon Pack<select id="iconPackSelect"></select></label>
+            <p class="sv2-muted">Icon packs can later point to sprite sheets. Default uses plaintext/special-character module icons.</p>
+          </div>
+
+          <div class="sv2-card">
+            <h3>Taskbar</h3>
+            <label class="check"><input id="hideTaskbarInput" type="checkbox"> Auto-hide taskbar</label>
+            <p class="sv2-muted">When enabled, the taskbar hides until the pointer touches the bottom edge.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="sv2-page" data-page="state">
+        <header class="sv2-page-head">
+          <div>
+            <h2>State</h2>
+            <p>Current session and persisted shell state.</p>
+          </div>
+          <button id="refreshStateBtn">Refresh</button>
+        </header>
+
+        <div class="sv2-card">
+          <h3>Session</h3>
+          <pre id="statePre">{}</pre>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="settings-v2.js?v=1778727280"></script>
+</body>
+</html>

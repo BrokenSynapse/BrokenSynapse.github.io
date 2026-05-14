@@ -1,0 +1,47 @@
+[
+  {
+    "code": "LGD",
+    "label": "Leviathan Gold Dollar",
+    "symbol": "\u0141",
+    "ratePerLGD": "1",
+    "precision": "3",
+    "mode": "fixed",
+    "notes": "Base currency. One \u0141 equals one grain of gold."
+  },
+  {
+    "code": "USD_LIVE",
+    "label": "US Dollar live gold grain",
+    "symbol": "$",
+    "ratePerLGD": "4.5",
+    "precision": "2",
+    "mode": "liveGold",
+    "notes": "Runtime Apps Script fetch: XAU/USD per troy ounce divided by 480 grains."
+  },
+  {
+    "code": "USD_FIXED",
+    "label": "US Dollar fixed fallback",
+    "symbol": "$",
+    "ratePerLGD": "4.5",
+    "precision": "2",
+    "mode": "fixed",
+    "notes": "Editable user preset; display units per 1 \u0141."
+  },
+  {
+    "code": "D",
+    "label": "Legacy Dinari display",
+    "symbol": "D",
+    "ratePerLGD": "1",
+    "precision": "3",
+    "mode": "fixed",
+    "notes": "Compatibility display for old sheets / modules."
+  },
+  {
+    "code": "CRED",
+    "label": "Leviathan Credit",
+    "symbol": "LC",
+    "ratePerLGD": "1000",
+    "precision": "0",
+    "mode": "fixed",
+    "notes": "Example internal fixed preset."
+  }
+]

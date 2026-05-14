@@ -26,7 +26,26 @@ html,body{overflow:hidden}.auth-locked .desktop{display:none}.logged-in .login-s
 .lmi-window.edge-hot{outline:1px solid color-mix(in srgb,var(--accent) 42%,transparent)!important;}
 /* Give the invisible resize zones enough meat to catch the cursor without visible corner buttons. */
 .resize-handle{background:transparent!important;opacity:0!important;}
-</style></head><body class="auth-locked">
+
+/* LMI shell icon sizing / snap QoL */
+:root{--lmi-icon-size:72px;--lmi-icon-tile-w:110px;--lmi-icon-tile-h:124px;--lmi-icon-font:27px;--lmi-icon-label:13px}
+.desktop-icon{width:var(--lmi-icon-tile-w)!important;min-height:var(--lmi-icon-tile-h)!important;padding:max(4px,calc(var(--lmi-icon-size) * .08))!important}
+.icon-box{width:var(--lmi-icon-size)!important;height:var(--lmi-icon-size)!important;font-size:var(--lmi-icon-font)!important;margin-bottom:max(5px,calc(var(--lmi-icon-size) * .10))!important}
+.desktop-icon strong{font-size:var(--lmi-icon-label)!important;line-height:1.12;overflow-wrap:anywhere}
+.desktop-icon em{font-size:max(8px,calc(var(--lmi-icon-label) * .76))!important;line-height:1.12;max-height:2.25em;overflow:hidden}
+body[data-grid-snap="on"] #desktopIcons{background-image:radial-gradient(circle,color-mix(in srgb,var(--accent) 22%,transparent) 0 1px,transparent 1px);background-size:calc(var(--lmi-icon-tile-w) + max(12px,calc(var(--lmi-icon-size) * .22))) calc(var(--lmi-icon-tile-h) + max(10px,calc(var(--lmi-icon-size) * .20)));background-position:0 18px}
+
+</style><link rel="stylesheet" href="./lmi-local-overrides.css"></head><body class="auth-locked">
 <section class="login-screen"><div class="login-stack"><img class="login-logo" src="assets/lmi-logo.png" alt="LMI"><div class="login-panel"><h1 class="login-title">PLEASE SUBMIT AN LMI EMPLOYEE TAG AND HASH</h1><div class="field"><label>LMI Relay Endpoint</label><div class="relay-row"><input id="relayUrl" type="text" autocomplete="off" placeholder="/api/relay" value="/api/relay"><button id="saveRelay" class="btn secondary">Cache Locally</button><button id="forgetRelay" class="btn secondary">Forget</button><button id="clearLocalCache" class="btn secondary">Clear Site Cache</button></div></div><div class="login-grid"><div class="field"><label>Employee Tag</label><input id="loginUsername" placeholder="Employee tag"></div><div class="field"><label>Hash</label><input id="loginPassword" type="password" placeholder="Hash"></div></div><div class="row" style="margin-top:12px"><button id="loginButton" class="btn">Submit Tag</button></div><div id="loginStatus" class="login-status">Awaiting credentials...</div></div></div></section>
 <main class="desktop"><header class="topbar"><div class="brand">L.M.I. DESKTOP</div><div id="operatorPlate" class="operator">Operator: —</div></header><section class="workspace"><div id="desktopIcons"></div><div id="windowLayer" class="window-layer"></div></section><footer class="taskbar"><button id="startBtn" class="start-btn">LMI</button><div id="startMenu" class="start-menu hidden"></div><div id="taskGroup" class="row"></div><div id="clock" class="clock"></div></footer></main>
-<script src="scripts/lmi-config.js"></script><script src="scripts/lmi-api.js"></script><script src="scripts/lmi-auth.js"></script><script src="scripts/lmi-window-manager.js"></script><script src="scripts/lmi-desktop.js"></script></body></html>
+<script src="scripts/lmi-config.js?v=1778690926"></script>
+<script src="scripts/lmi-api.js?v=1778690926"></script>
+<script src="scripts/lmi-auth.js?v=1778690926"></script>
+<script src="scripts/lmi-window-manager.js?v=1778690926"></script>
+<script src="scripts/lmi-desktop-user-relay-guard.js?v=1778690926"></script>
+<script src="scripts/lmi-desktop-layout-user-fix.js?v=1778690926"></script>
+<script src="scripts/lmi-desktop.js?v=1778730253"></script>
+<script src="scripts/lmi-login-audio-arm.js?v=1778651917"></script>
+<script src="scripts/lmi-ambience.js?v=1778690926"></script>
+<script src="scripts/lmi-ambience-taskbar.js?v=1778690926"></script>
+</body></html>
