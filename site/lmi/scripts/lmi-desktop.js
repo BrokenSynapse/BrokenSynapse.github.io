@@ -77,6 +77,22 @@
     if(count) saveLayout(layout);
     return {count,positions,layout};
   }
+  function hydrateLayoutFromApps_(apps){
+    if(!Array.isArray(apps) || !apps.length) return;
+    const layout=getLayout();
+    let count=0;
+
+    apps.forEach(app=>{
+      if(!app?.hasLayout || !hasIconCoords_(app)) return;
+      const patch={iconX:Number(app.iconX),iconY:Number(app.iconY)};
+      layoutAliasesForApp_(app, app.id || app.key).forEach(id=>{
+        layout[id]=Object.assign({},layout[id]||{},patch);
+      });
+      count++;
+    });
+
+    if(count) saveLayout(layout);
+  }
   function themeVars(){
     try{
       const path = location.pathname.replace(/\/+$/,'').toLowerCase();
@@ -416,7 +432,7 @@
   }
 
 
-  function normalizeApp(a){return {id:a.id||a.appId, key:a.key||a.k, name:a.name||a.nm||a.id, title:a.title||a.name||a.nm, path:a.path||a.modulePath, icon:a.icon||a.ico||'□', description:a.description||a.desc||'', w:Number(a.w||a.defaultW||900), h:Number(a.h||a.defaultH||620), x:Number(a.x||80), y:Number(a.y||70), iconX:Number(a.iconX||0), iconY:Number(a.iconY||0)} }
+  function normalizeApp(a){return {id:a.id||a.appId, key:a.key||a.k, hasLayout:!!a.hasLayout, name:a.name||a.nm||a.id, title:a.title||a.name||a.nm, path:a.path||a.modulePath, icon:a.icon||a.ico||'□', description:a.description||a.desc||'', w:Number(a.w||a.defaultW||900), h:Number(a.h||a.defaultH||620), x:Number(a.x||80), y:Number(a.y||70), iconX:a.iconX===undefined?undefined:Number(a.iconX), iconY:a.iconY===undefined?undefined:Number(a.iconY)} }
   function visibleApps(){ const installed=(runtime.session?.mode==='relay')?null:getInstalled(); return runtime.apps.filter(a=>!installed||installed.includes(a.id)||['settings','bipac','fileExplorer'].includes(a.id)); }
   function desktopBounds(){
     // Pass 10: icon dragging must be bounded by the real desktop workspace,
@@ -444,8 +460,10 @@ function renderDesktop(){
       const defaultX=(i%cols)*metrics.gridX+metrics.originX;
       const defaultY=Math.floor(i/cols)*metrics.gridY+metrics.originY;
 
-      let ix=Number.isFinite(Number(saved.iconX))?Number(saved.iconX):(Number(app.iconX)||defaultX);
-      let iy=Number.isFinite(Number(saved.iconY))?Number(saved.iconY):(Number(app.iconY)||defaultY);
+      const appIconX=Number(app.iconX);
+      const appIconY=Number(app.iconY);
+      let ix=Number.isFinite(Number(saved.iconX))?Number(saved.iconX):(app.hasLayout&&Number.isFinite(appIconX)?appIconX:defaultX);
+      let iy=Number.isFinite(Number(saved.iconY))?Number(saved.iconY):(app.hasLayout&&Number.isFinite(appIconY)?appIconY:defaultY);
 
       if(prefs.gridSnap){
         const sp=snapPoint(ix,iy,prefs);
@@ -584,8 +602,6 @@ function renderDesktop(){
         if(data&&Array.isArray(data.apps)&&data.apps.length){
           runtime.desktopState=data;
           runtime.user=Object.assign({},runtime.user||{},data.user||{});
-          hydrateLayoutFromRemote_(data.layout);
-
           const dbShell=data.settings?.shellPrefs||data.user?.shellPrefs;
           if(dbShell){
             localStorage.setItem(SHELL_PREFS_KEY,JSON.stringify(dbShell));
@@ -594,6 +610,8 @@ function renderDesktop(){
           }
 
           const remote=data.apps.map(normalizeApp);
+          hydrateLayoutFromRemote_(data.layout);
+          hydrateLayoutFromApps_(remote);
           const byId=new Map(remote.map(a=>[a.id,a]));
           manifest.forEach(a=>{
             if(['settings','bipac','fileExplorer'].includes(a.id) && !byId.has(a.id)) remote.push(a);

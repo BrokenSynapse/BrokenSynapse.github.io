@@ -665,7 +665,12 @@ function getDesktopState(payload, user) {
     const keyHasIcon = Number.isFinite(Number(byKey.iconX)) && Number.isFinite(Number(byKey.iconY));
     const idHasIcon = Number.isFinite(Number(byId.iconX)) && Number.isFinite(Number(byId.iconY));
     const l = keyHasIcon && !idHasIcon ? Object.assign({}, byId, byKey) : Object.assign({}, byKey, byId);
-    return { key: k, id, name: a.nm || a.name || id, path: a.path, icon: a.ico || a.icon || '□', description: a.desc || a.description || '', min: a.min, w: n_(l.w, n_(a.w, 900)), h: n_(l.h, n_(a.h, 620)), x: n_(l.x, 80), y: n_(l.y, 70), iconX: n_(l.iconX, n_(a.iconX, 0)), iconY: n_(l.iconY, n_(a.iconY, 0)) };
+    const hasLayout = keyHasIcon || idHasIcon;
+    if (hasLayout) {
+      layout[k] = Object.assign({}, l);
+      layout[id] = Object.assign({}, l);
+    }
+    return { key: k, id, hasLayout, name: a.nm || a.name || id, path: a.path, icon: a.ico || a.icon || '□', description: a.desc || a.description || '', min: a.min, w: n_(l.w, n_(a.w, 900)), h: n_(l.h, n_(a.h, 620)), x: n_(l.x, 80), y: n_(l.y, 70), iconX: hasLayout ? n_(l.iconX, 0) : undefined, iconY: hasLayout ? n_(l.iconY, 0) : undefined };
   }).filter(Boolean);
   return {
     user: userFromCore_(c),
