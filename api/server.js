@@ -1412,15 +1412,35 @@ function chatPost(payload, user) {
 }
 function bodyMods() { ensureSheet_('mods', ['mid','slot','nm','cat','st','mfg','desc','fx','draw','rare','compat','diff','vis','lockChild','locks','replace','cost','unCost','validSlots','supportType','lmexCertified','cardiovascularOutput','pressureTolerance','renalClearance','hepaticProcessing','thermalLoad','neuralBuffer','sleepState','glucoseElectrolyte','supportNotes','img','image','imageUrl','layer','z','opacity']); return { mods: rows_('mods') }; }
 function bodySlots() {
-  ensureSheet_('bodySlots', ['slot','label','region','ord','note']);
+  ensureSheet_('bodySlots', ['slot','label','parentSlot','region','ord','note','category','isSlot','accepts','blocks','exclusiveGroup']);
   const rows = rows_('bodySlots').map(r => ({
     slot: r.slot || r.id || r.label || '',
     label: r.label || r.name || r.slot || '',
+    parentSlot: r.parentSlot || r.parent || '',
     region: r.region || '',
     ord: r.ord || r.order || '',
-    note: r.note || r.desc || ''
+    note: r.note || r.desc || '',
+    category: r.category || '',
+    isSlot: r.isSlot == null ? true : bool_(r.isSlot),
+    accepts: r.accepts || '',
+    blocks: r.blocks || '',
+    exclusiveGroup: r.exclusiveGroup || r.slot || ''
   })).filter(r => r.slot || r.label);
   return { slots: rows };
+}
+function bodyCategories() {
+  ensureSheet_('bodyCategories', ['id','label','parent','region','canInstall','accepts','blocks','note']);
+  const rows = rows_('bodyCategories').map(r => ({
+    id: r.id || r.category || '',
+    label: r.label || r.name || r.id || '',
+    parent: r.parent || '',
+    region: r.region || '',
+    canInstall: r.canInstall == null ? true : bool_(r.canInstall),
+    accepts: r.accepts || '',
+    blocks: r.blocks || '',
+    note: r.note || r.desc || ''
+  })).filter(r => r.id || r.label);
+  return { categories: rows };
 }
 function workJobs() { return { jobs: rows_('work') }; }
 function workCashOut(payload, user) {
@@ -1533,7 +1553,7 @@ function bodyProfileMeshSet(payload, user) {
 }
 
 function bodyBundle(payload, user) {
-  return { slots: bodySlots().slots, mods: bodyMods().mods, installed: bodyInstalled(payload || {}, user).installed };
+  return { slots: bodySlots().slots, categories: bodyCategories().categories, mods: bodyMods().mods, installed: bodyInstalled(payload || {}, user).installed };
 }
 
 function boolish_(v) { return v === true || String(v).toLowerCase() === 'true' || String(v) === '1' || String(v).toLowerCase() === 'yes'; }
@@ -1629,7 +1649,7 @@ function currencyPresets(payload, user) {
   }
 }
 function dataAppend(payload, user) {
-  const allowed = ['core','catalog','vehicles','mods','bodySlots','dictApps','themes','chatRooms','work','pharmaItems','currencySettings','bodyProfiles','bodyInstalled'];
+  const allowed = ['core','catalog','vehicles','mods','bodySlots','bodyCategories','dictApps','themes','chatRooms','work','pharmaItems','currencySettings','bodyProfiles','bodyInstalled'];
   const sheet = String(payload && payload.sheet || '').trim();
   if (allowed.indexOf(sheet) < 0) throw new Error('DataForge refused sheet: ' + sheet);
   const record = payload.record || {};
@@ -1799,6 +1819,7 @@ const routes = {
   'chat.post': chatPost,
   'body.mods': bodyMods,
   'body.slots': bodySlots,
+  'body.categories': bodyCategories,
   'body.installed': bodyInstalled,
   'body.install': bodyInstall,
   'body.bundle': bodyBundle,
