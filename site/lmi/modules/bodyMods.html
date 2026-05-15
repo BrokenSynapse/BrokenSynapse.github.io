@@ -17,9 +17,13 @@ body{overflow:hidden}
 .panel h2{margin:0;padding:10px 12px;border-bottom:1px solid var(--line2);font-size:17px;letter-spacing:.08em}
 .panel-body{min-height:0;overflow:auto;padding:10px}
 .tools{display:grid;grid-template-columns:1fr 120px;gap:8px;margin-bottom:8px}.tools input,.tools select{width:100%}
-.slot-list{display:flex;flex-direction:column;gap:6px}.slot-btn{border:1px solid var(--line2);background:#050209;color:var(--text);padding:8px;text-align:left;cursor:pointer}
-.slot-btn:hover,.slot-btn.active{border-color:var(--line);background:rgba(164,92,255,.2);box-shadow:0 0 12px rgba(164,92,255,.18)}
-.slot-btn b{display:block}.slot-btn span{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+.slot-list{display:flex;flex-direction:column;gap:3px}.slot-row{display:grid;grid-template-columns:22px 1fr;align-items:stretch;gap:3px}
+.slot-toggle,.slot-btn{border:1px solid var(--line2);background:#050209;color:var(--text);cursor:pointer;min-height:34px}
+.slot-toggle{display:grid;place-items:center;padding:0;font-size:11px;color:var(--muted)}
+.slot-toggle.empty{visibility:hidden}.slot-toggle:hover,.slot-btn:hover,.slot-btn.active{border-color:var(--line);background:rgba(164,92,255,.2);box-shadow:0 0 12px rgba(164,92,255,.18)}
+.slot-btn{padding:6px 8px;text-align:left;display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center}
+.slot-btn b{display:block;font-size:12px}.slot-btn span span{display:block;color:var(--muted);font-size:10px;margin-top:2px}.slot-count{color:var(--muted);font-size:10px}
+.slot-root .slot-btn b{font-size:13px;letter-spacing:.08em;text-transform:uppercase}.slot-depth-1{margin-top:4px}
 .mod-card{border:1px solid var(--line2);background:#07030c;margin-bottom:8px;padding:8px;display:grid;grid-template-columns:58px 1fr;gap:8px;cursor:pointer}
 .mod-card:hover,.mod-card.active{border-color:var(--line);background:rgba(164,92,255,.16)}
 .mod-thumb{width:58px;height:58px;border:1px solid var(--line2);background:#050209;display:grid;place-items:center;overflow:hidden;color:var(--muted);font-weight:900}
@@ -112,9 +116,9 @@ body{overflow:hidden}
   const nice = value => String(value || '').replace(/[_.-]+/g,' ').replace(/\b\w/g, c => c.toUpperCase());
   const ratingKeys = ['cardiovascularOutput','pressureTolerance','renalClearance','hepaticProcessing','thermalLoad','neuralBuffer','sleepState','glucoseElectrolyte'];
   const ratingLabels = { cardiovascularOutput:'Cardio Output', pressureTolerance:'Pressure Tol.', renalClearance:'Renal Clear.', hepaticProcessing:'Hepatic Proc.', thermalLoad:'Thermal Load', neuralBuffer:'Neural Buffer', sleepState:'Sleep Stable', glucoseElectrolyte:'Glucose/Electro.' };
-  const regionOrder = ['full_body','head','face','torso','abdomen','pelvis','left_arm','right_arm','left_hand','right_hand','left_leg','right_leg','left_foot','right_foot','spine','skin','systemic','genome'];
+  const regionOrder = ['body','head','neck','torso','pelvis','left_arm','right_arm','left_leg','right_leg','surface','subdermal','structure','systems','genetic'];
   const seedSlots = [
-    ['body','Full Body','full_body','Systemic root'],['head','Head','head','Cranial and neural'],['head.face','Face','face','External facial structures'],['head.left_eye','Left Eye','face','Ocular'],['head.right_eye','Right Eye','face','Ocular'],['torso','Torso','torso','Chest and core'],['torso.heart','Heart','torso','Cardiovascular'],['torso.lungs','Lungs','torso','Respiratory'],['torso.spine','Spine','spine','Central support'],['left_arm','Left Arm','left_arm','Limb'],['right_arm','Right Arm','right_arm','Limb'],['left_hand','Left Hand','left_hand','Hand'],['right_hand','Right Hand','right_hand','Hand'],['pelvis','Pelvis','pelvis','Pelvic structure'],['left_leg','Left Leg','left_leg','Limb'],['right_leg','Right Leg','right_leg','Limb'],['left_foot','Left Foot','left_foot','Foot'],['right_foot','Right Foot','right_foot','Foot'],['skin','Skin','skin','Dermal layer'],['skin.subdermal','Subdermal Layer','skin','Under-skin layer'],['blood','Blood','systemic','Blood chemistry'],['nervous_system','Nervous System','systemic','Signals and brain'],['skeleton','Skeleton','systemic','Skeletal frame'],['musculature','Musculature','systemic','Muscle'],['genome','Genome','genome','Genetic profile']
+    ['body','Body','','body'],['head','Head','body','head'],['head.face','Face','head','head'],['torso','Torso','body','torso'],['pelvis','Pelvis','body','pelvis'],['left_arm','Left Arm','body','left_arm'],['left_arm.hand','Hand','left_arm','left_arm'],['right_arm','Right Arm','body','right_arm'],['right_arm.hand','Hand','right_arm','right_arm'],['left_leg','Left Leg','body','left_leg'],['left_leg.foot','Foot','left_leg','left_leg'],['right_leg','Right Leg','body','right_leg'],['right_leg.foot','Foot','right_leg','right_leg'],['surface','Surface','body','surface'],['subdermal','Subdermal','body','subdermal'],['structure','Structure','body','structure'],['systems','Systems','body','systems'],['genetic','Genetic','body','genetic']
   ];
 
   let ctx = null;
@@ -125,6 +129,7 @@ body{overflow:hidden}
   let selectedSlot = 'body';
   let selectedMid = '';
   let profile = {};
+  let collapsed = new Set();
 
   function setStatus(text, cls=''){
     $('status').textContent = text || 'Ready.';
@@ -140,26 +145,20 @@ body{overflow:hidden}
       .flatMap(v => String(v).split(/[;,|]/).map(x => x.trim()).filter(Boolean)))];
   }
   function visible(mod){ return !['0','false','hidden','no'].includes(String(mod?.vis ?? '1').toLowerCase()); }
+  function parentOfSlot(slot){
+    slot = String(slot || '');
+    if(slot === 'body') return '';
+    if(!slot.includes('.')) return 'body';
+    return slot.split('.').slice(0, -1).join('.');
+  }
+  function depthOfSlot(slot){
+    if(slot === 'body') return 0;
+    return parentOfSlot(slot) === 'body' ? 1 : slot.split('.').length;
+  }
   function regionOf(slot){
     slot = String(slot || 'body').toLowerCase();
-    if(slot === 'body' || slot === 'whole_body' || slot === 'full_body') return 'full_body';
-    if(slot.includes('face') || slot.includes('eye')) return 'face';
-    if(slot.includes('left_hand')) return 'left_hand';
-    if(slot.includes('right_hand')) return 'right_hand';
-    if(slot.includes('left_foot')) return 'left_foot';
-    if(slot.includes('right_foot')) return 'right_foot';
-    if(slot.includes('left_arm')) return 'left_arm';
-    if(slot.includes('right_arm')) return 'right_arm';
-    if(slot.includes('left_leg')) return 'left_leg';
-    if(slot.includes('right_leg')) return 'right_leg';
-    if(slot.includes('spine')) return 'spine';
-    if(slot.includes('torso') || slot.includes('heart') || slot.includes('lung')) return 'torso';
-    if(slot.includes('abdomen') || slot.includes('liver') || slot.includes('kidney')) return 'abdomen';
-    if(slot.includes('pelvis')) return 'pelvis';
-    if(slot.includes('skin')) return 'skin';
-    if(slot.includes('genome')) return 'genome';
-    if(slot.includes('head') || slot.includes('brain')) return 'head';
-    return 'systemic';
+    if(slot === 'body' || slot === 'whole_body' || slot === 'full_body') return 'body';
+    return slot.split('.')[0];
   }
 
   function cleanAsset(src){
@@ -184,17 +183,43 @@ body{overflow:hidden}
       raw.forEach((row, idx) => {
         if(row && typeof row === 'object'){
           const slot = String(row.slot || row.id || row.label || '').trim();
-          if(slot) out.push({ slot, label:String(row.label || row.name || row.slot || slot), region:String(row.region || regionOf(slot)), ord:Number(row.ord || row.order || idx), note:String(row.note || row.desc || '') });
+          if(slot) out.push({ slot, label:String(row.label || row.name || slot.split('.').pop()), parentSlot:String(row.parentSlot || row.parent || parentOfSlot(slot)), region:String(row.region || regionOf(slot)), ord:Number(row.ord || row.order || idx), note:String(row.note || row.desc || ''), category:String(row.category || '') });
         } else if(row) {
           const slot = String(row);
-          out.push({ slot, label:nice(slot), region:regionOf(slot), ord:idx, note:'' });
+          out.push({ slot, label:nice(slot.split('.').pop()), parentSlot:parentOfSlot(slot), region:regionOf(slot), ord:idx, note:'', category:'' });
         }
       });
     }
-    seedSlots.forEach(([slot,label,region,note], idx) => {
-      if(!out.some(x => x.slot === slot)) out.push({ slot, label, region, ord:10000 + idx, note });
+    seedSlots.forEach(([slot,label,parentSlot,region], idx) => {
+      if(!out.some(x => x.slot === slot)) out.push({ slot, label, parentSlot, region, ord:10000 + idx, note:'', category:'' });
     });
-    return out.sort((a,b) => (a.ord - b.ord) || a.label.localeCompare(b.label));
+    return out.sort((a,b) => (a.ord - b.ord) || a.slot.localeCompare(b.slot));
+  }
+
+  function slotMap(){
+    return new Map(slots.map(s => [s.slot, s]));
+  }
+
+  function childrenMap(){
+    const map = new Map();
+    slots.forEach(s => {
+      const parent = s.parentSlot || parentOfSlot(s.slot);
+      if(!map.has(parent)) map.set(parent, []);
+      map.get(parent).push(s);
+    });
+    map.forEach(list => list.sort((a,b) => (a.ord - b.ord) || a.label.localeCompare(b.label)));
+    return map;
+  }
+
+  function descendantSlots(slot, childMap = childrenMap()){
+    const out = [slot];
+    const stack = [...(childMap.get(slot) || [])];
+    while(stack.length){
+      const item = stack.shift();
+      out.push(item.slot);
+      stack.unshift(...(childMap.get(item.slot) || []));
+    }
+    return out;
   }
 
   function modMatchesSlot(mod, slot){
@@ -206,15 +231,27 @@ body{overflow:hidden}
     });
   }
 
-  function filteredSlots(){
+  function slotPassesSearch(slot, q, reg){
+    if(reg && slot.region !== reg) return false;
+    if(!q) return true;
+    const hasMod = mods.some(m => JSON.stringify(m).toLowerCase().includes(q) && modMatchesSlot(m, slot.slot));
+    return `${slot.slot} ${slot.label} ${slot.region} ${slot.category}`.toLowerCase().includes(q) || hasMod;
+  }
+
+  function visibleSlotSet(){
     const q = $('search').value.trim().toLowerCase();
     const reg = $('regionFilter').value;
-    return slots.filter(slot => {
-      if(reg && slot.region !== reg) return false;
-      if(!q) return true;
-      const hasMod = mods.some(m => JSON.stringify(m).toLowerCase().includes(q) && modMatchesSlot(m, slot.slot));
-      return `${slot.slot} ${slot.label} ${slot.region} ${slot.note}`.toLowerCase().includes(q) || hasMod;
+    const visible = new Set();
+    const bySlot = slotMap();
+    slots.forEach(slot => {
+      if(!slotPassesSearch(slot, q, reg)) return;
+      let current = slot.slot;
+      while(current){
+        visible.add(current);
+        current = bySlot.get(current)?.parentSlot || parentOfSlot(current);
+      }
     });
+    return visible;
   }
 
   function filteredMods(){
@@ -230,10 +267,34 @@ body{overflow:hidden}
   function renderSlots(){
     const counts = new Map();
     mods.forEach(m => slotsOf(m).forEach(s => counts.set(s, (counts.get(s) || 0) + 1)));
-    $('slots').innerHTML = filteredSlots().map(s => {
-      const inst = installed.filter(x => String(x.slot || '') === s.slot).length;
-      return `<button class="slot-btn ${s.slot === selectedSlot ? 'active' : ''}" data-slot="${esc(s.slot)}"><b>${esc(s.label)}</b><span>${esc(s.slot)} / ${nice(s.region)} / ${counts.get(s.slot) || 0} mods / ${inst} installed</span></button>`;
-    }).join('') || '<div class="muted">No matching slots.</div>';
+    const childMap = childrenMap();
+    const visible = visibleSlotSet();
+    const rows = [];
+    function walk(parent){
+      for(const s of childMap.get(parent) || []){
+        if(!visible.has(s.slot)) continue;
+        const depth = depthOfSlot(s.slot);
+        const kids = (childMap.get(s.slot) || []).filter(k => visible.has(k.slot));
+        const inst = installed.filter(x => String(x.slot || '') === s.slot).length;
+        const subtreeModCount = descendantSlots(s.slot, childMap).reduce((sum, id) => sum + (counts.get(id) || 0), 0);
+        const open = !collapsed.has(s.slot);
+        rows.push(`<div class="slot-row slot-depth-${depth} ${depth === 0 ? 'slot-root' : ''}" style="padding-left:${Math.min(depth, 5) * 12}px">
+          <button class="slot-toggle ${kids.length ? '' : 'empty'}" data-toggle="${esc(s.slot)}">${open ? 'v' : '&gt;'}</button>
+          <button class="slot-btn ${s.slot === selectedSlot ? 'active' : ''}" data-slot="${esc(s.slot)}">
+            <span><b>${esc(s.label)}</b><span>${esc(s.slot)} / ${nice(s.region)}</span></span>
+            <span class="slot-count">${subtreeModCount || counts.get(s.slot) || 0} / ${inst}</span>
+          </button>
+        </div>`);
+        if(open) walk(s.slot);
+      }
+    }
+    walk('');
+    $('slots').innerHTML = rows.join('') || '<div class="muted">No matching slots.</div>';
+    $('slots').querySelectorAll('[data-toggle]').forEach(btn => btn.onclick = () => {
+      const slot = btn.dataset.toggle;
+      if(collapsed.has(slot)) collapsed.delete(slot); else collapsed.add(slot);
+      renderSlots();
+    });
     $('slots').querySelectorAll('[data-slot]').forEach(btn => btn.onclick = () => {
       selectedSlot = btn.dataset.slot;
       selectedMid = '';
@@ -284,11 +345,19 @@ body{overflow:hidden}
       ${ratings.length ? ratings.map(([k,v]) => `<div class="rating"><span>${ratingLabels[k] || k}</span><div class="bar"><div class="fill" style="width:${Math.max(0,Math.min(5,v))*20}%"></div></div><b>${v}</b></div>`).join('') : '<div class="muted">No support ratings listed.</div>'}
     `;
     const modSlots = slotsOf(mod);
-    const options = slots.slice();
+    const childMap = childrenMap();
+    const options = [];
+    function addOptions(parent){
+      for(const s of childMap.get(parent) || []){
+        options.push(s);
+        addOptions(s.slot);
+      }
+    }
+    addOptions('');
     modSlots.forEach(slot => {
-      if(!options.some(s => s.slot === slot)) options.unshift({ slot, label:nice(slot), region:regionOf(slot), ord:0, note:'' });
+      if(!options.some(s => s.slot === slot)) options.unshift({ slot, label:nice(slot.split('.').pop()), parentSlot:parentOfSlot(slot), region:regionOf(slot), ord:0, note:'' });
     });
-    $('installSlot').innerHTML = options.map(s => `<option value="${esc(s.slot)}">${esc(s.label)}</option>`).join('');
+    $('installSlot').innerHTML = options.map(s => `<option value="${esc(s.slot)}">${'--'.repeat(Math.max(0, depthOfSlot(s.slot)))} ${esc(s.label)}</option>`).join('');
     $('installSlot').value = modSlots.find(slot => options.some(s => s.slot === slot)) || selectedSlot;
   }
 
