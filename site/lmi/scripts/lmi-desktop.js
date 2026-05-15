@@ -301,7 +301,56 @@
     };
   }
 
+  function reflowCurrentIconLayoutForPrefs_(oldPrefs,nextPrefs){
+    const oldM=shellMetrics(oldPrefs);
+    const nextM=shellMetrics(nextPrefs);
+    const iconSizeChanged=oldM.iconSize!==nextM.iconSize;
+    const snapChanged=(oldPrefs?.gridSnap!==false)!==(nextPrefs?.gridSnap!==false);
+
+    if(!iconSizeChanged && !snapChanged) return false;
+
+    const layout=getLayout();
+    const bounds=desktopBounds();
+    const maxX=Math.max(0,bounds.width-nextM.tileW);
+    const maxY=Math.max(0,bounds.height-nextM.tileH);
+    let count=0;
+
+    document.querySelectorAll('.desktop-icon[data-id]').forEach(el=>{
+      const fallbackId=el.dataset.id || el.dataset.app;
+      if(!fallbackId) return;
+
+      const app=appForLayoutId_(fallbackId);
+      const x=parseInt(el.style.left || el.offsetLeft || 0,10) || 0;
+      const y=parseInt(el.style.top || el.offsetTop || 0,10) || 0;
+      let nx=x;
+      let ny=y;
+
+      if(nextPrefs.gridSnap){
+        if(oldPrefs?.gridSnap!==false){
+          const col=Math.max(0,Math.round((x-oldM.originX)/oldM.gridX));
+          const row=Math.max(0,Math.round((y-oldM.originY)/oldM.gridY));
+          nx=nextM.originX+(col*nextM.gridX);
+          ny=nextM.originY+(row*nextM.gridY);
+        }else{
+          const sp=snapPoint(x,y,nextPrefs);
+          nx=sp.x;
+          ny=sp.y;
+        }
+      }
+
+      const patch={iconX:clamp(Math.round(nx),0,maxX),iconY:clamp(Math.round(ny),0,maxY)};
+      layoutAliasesForApp_(app,fallbackId).forEach(id=>{
+        layout[id]=Object.assign({},layout[id]||{},patch);
+      });
+      count++;
+    });
+
+    if(count) saveLayout(layout);
+    return !!count;
+  }
+
   function setShellPrefs(prefs,opts){
+    const oldPrefs=readShellPrefs();
     const base=(opts&&opts.merge===false)?{}:readShellPrefs();
     const next=Object.assign({},base,prefs||{});
     next.iconSize=clamp(Math.round(Number(next.iconSize||72)),44,120);
@@ -319,6 +368,7 @@
     }
 
     captureCurrentIconLayoutLocal_();
+    reflowCurrentIconLayoutForPrefs_(oldPrefs,next);
     applyShellPrefs(next);
     renderDesktop();
 
