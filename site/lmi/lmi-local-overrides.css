@@ -44,5 +44,5 @@ body,
 body[data-grid-snap="on"] #desktopIcons{
   background-image:radial-gradient(circle,color-mix(in srgb,var(--accent) 22%,transparent) 0 1px,transparent 1px);
   background-size:calc(var(--lmi-icon-tile-w) + max(12px,calc(var(--lmi-icon-size) * .22))) calc(var(--lmi-icon-tile-h) + max(10px,calc(var(--lmi-icon-size) * .20)));
-  background-position:calc(var(--lmi-icon-tile-w) * .35) 18px;
+  background-position:0 18px;
 }
