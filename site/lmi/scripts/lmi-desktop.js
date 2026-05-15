@@ -543,8 +543,8 @@
       name:'FileExplorer.LMX',
       title:'FileExplorer.LMX',
       icon:'FE',
-      module:'modules/fileExplorer.html',
-      url:'modules/fileExplorer.html',
+      module:'modules/fileExplorer.html?v=2026051504',
+      url:'modules/fileExplorer.html?v=2026051504',
       desc:'Profile and item asset manager'
     };
 
@@ -552,8 +552,8 @@
     if(idx >= 0){
       apps[idx] = Object.assign({}, app, apps[idx], {
         id:'fileExplorer',
-        module:'modules/fileExplorer.html',
-        url:'modules/fileExplorer.html'
+        module:'modules/fileExplorer.html?v=2026051504',
+        url:'modules/fileExplorer.html?v=2026051504'
       });
     } else {
       apps.push(app);

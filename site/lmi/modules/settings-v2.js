@@ -120,11 +120,6 @@
     if(current) sel.value = current;
   }
 
-  function isAdmin(){
-    const u = state.user || currentUserHint() || {};
-    return String(u.access || u.al || u.role || '').toLowerCase() === 'admin';
-  }
-
   async function loadIconPacks(){
     try{
       const res = await fetch('/api/icon-packs', { cache:'no-store' });
@@ -148,38 +143,15 @@
     });
 
     sel.value = p.iconPack || 'default';
-    const admin = $('iconPackAdmin');
-    if(admin) admin.hidden = !isAdmin();
   }
 
-  async function sendIconPackZip(mode){
-    const file = $('iconPackZipInput')?.files?.[0];
-    const token = $('iconPackTokenInput')?.value || '';
-    const out = $('iconPackStatus');
-
-    if(!file){
-      out.textContent = 'Select a .zip file first.';
-      return;
-    }
-
-    const form = new FormData();
-    form.append('file', file, file.name);
-    out.textContent = mode === 'upload' ? 'Uploading icon pack...' : 'Inspecting icon pack...';
-
-    try{
-      const res = await fetch(`/api/icon-packs/${mode}`, {
-        method:'POST',
-        headers:{'x-admin-token': token},
-        body:form
-      });
-      const data = await res.json();
-      out.textContent = JSON.stringify(data, null, 2);
-      if(data.ok && mode === 'upload'){
-        await loadIconPacks();
-        paintDesktop();
-      }
-    }catch(e){
-      out.textContent = e.message || String(e);
+  async function refreshIconPackOptions(){
+    const sel = $('iconPackSelect');
+    const selected = sel?.value || prefs().iconPack || 'default';
+    await loadIconPacks();
+    paintIconPackOptions();
+    if(sel && [...sel.options].some(opt => opt.value === selected)){
+      sel.value = selected;
     }
   }
 
@@ -561,6 +533,7 @@
       btn.addEventListener('click', () => {
         document.querySelectorAll('.sv2-tabs button').forEach(b => b.classList.toggle('active', b === btn));
         document.querySelectorAll('.sv2-page').forEach(p => p.classList.toggle('active', p.dataset.page === btn.dataset.page));
+        if(btn.dataset.page === 'desktop') refreshIconPackOptions();
         if(btn.dataset.page === 'state') refreshState();
       });
     });
@@ -595,8 +568,6 @@
     $('gridSnapInput').addEventListener('change', applyDesktopPrefs);
     $('hideTaskbarInput').addEventListener('change', applyDesktopPrefs);
     $('iconPackSelect').addEventListener('change', applyDesktopPrefs);
-    $('inspectIconPackBtn')?.addEventListener('click', () => sendIconPackZip('inspect'));
-    $('uploadIconPackBtn')?.addEventListener('click', () => sendIconPackZip('upload'));
     $('saveDesktopBtn').onclick = saveDesktop;
 
     $('refreshStateBtn').onclick = refreshState;
@@ -625,6 +596,10 @@
     paintAccount();
     paintDesktop();
     applyDesktopPrefs();
+    setInterval(() => {
+      const page = document.querySelector('.sv2-page[data-page="desktop"]');
+      if(page?.classList.contains('active')) refreshIconPackOptions();
+    }, 5000);
   }
 
   boot();

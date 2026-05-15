@@ -60,6 +60,49 @@ function safeAssetName_(name, fallbackExt = '') {
   return { base, ext };
 }
 
+function userFromRequest_(req) {
+  let body = req.body;
+
+  if (Buffer.isBuffer(body)) body = body.toString('utf8');
+  if (typeof body === 'string') {
+    try {
+      body = JSON.parse(body);
+    } catch {
+      body = {};
+    }
+  }
+  if (!body || typeof body !== 'object') body = {};
+
+  const raw =
+    body.user ||
+    body.lmiUser ||
+    req.headers['x-lmi-user'] ||
+    req.query.user;
+
+  if (!raw) return {};
+  if (typeof raw === 'object') return raw;
+
+  try {
+    return JSON.parse(String(raw));
+  } catch {
+    return {};
+  }
+}
+
+function coreIsAdmin_(c) {
+  return String(c?.al || c?.access || c?.role || '').trim().toLowerCase() === 'admin';
+}
+
+function requireLmiAdmin_(req, res, label = 'Admin access required.') {
+  try {
+    const c = coreFromUserStrict_(userFromRequest_(req));
+    if (coreIsAdmin_(c)) return c;
+  } catch {}
+
+  res.status(403).json({ ok: false, error: label });
+  return null;
+}
+
 function assetRelFromInput_(input) {
   let p = String(input || '').trim();
 
@@ -349,18 +392,58 @@ function isCoreAssetRel_(rel) {
 
 function requireCoreAssetAdmin_(req, res, rel) {
   if (!isCoreAssetRel_(rel)) return true;
-  if (!ADMIN_TOKEN) {
-    res.status(403).json({ ok: false, error: 'coreAssets is read-only until ADMIN_TOKEN is configured.' });
-    return false;
+
+  const c = (() => {
+    try { return coreFromUserStrict_(userFromRequest_(req)); } catch { return null; }
+  })();
+
+  if (coreIsAdmin_(c)) return true;
+
+  if (ADMIN_TOKEN) {
+    const got = req.headers['x-admin-token'] || req.query.token;
+    if (got === ADMIN_TOKEN) return true;
   }
 
-  const got = req.headers['x-admin-token'] || req.query.token;
-  if (got !== ADMIN_TOKEN) {
-    res.status(403).json({ ok: false, error: 'Admin token required for coreAssets changes.' });
-    return false;
+  res.status(403).json({ ok: false, error: 'Admin account required for coreAssets changes.' });
+  return false;
+}
+
+async function installIconPackFromZip_(buffer) {
+  const parsed = validateIconPackZip_(buffer);
+  const packId = safeIconPackId_(parsed.pack.id);
+  const destRoot = assetFullPath_(`${ICON_PACK_ROOT_REL}/${packId}`);
+  await fs.rm(destRoot.full, { recursive: true, force: true });
+  await fs.mkdir(path.join(destRoot.full, 'icons'), { recursive: true });
+
+  const entries = new Map(readZipEntries_(buffer)
+    .filter(entry => !String(entry.name || '').endsWith('/'))
+    .map(entry => [cleanZipPath_(entry.name), entry]));
+  const cleanPack = {
+    id: packId,
+    name: String(parsed.pack.name || packId).slice(0, 80),
+    type: parsed.pack.type || 'image',
+    fallback: parsed.pack.fallback || 'default',
+    apps: parsed.pack.apps || {},
+    aliases: parsed.pack.aliases || {}
+  };
+
+  for (const icon of parsed.files) {
+    const entry = entries.get(icon);
+    const data = zipEntryData_(buffer, entry);
+    const out = assetFullPath_(`${ICON_PACK_ROOT_REL}/${packId}/${icon}`);
+    await fs.mkdir(path.dirname(out.full), { recursive: true });
+    await fs.writeFile(out.full, data);
   }
 
-  return true;
+  await fs.writeFile(path.join(destRoot.full, 'pack.json'), JSON.stringify(cleanPack, null, 2));
+  const manifest = await writeIconPackManifest_();
+
+  return {
+    pack: cleanPack,
+    url: assetWebPath_(`${ICON_PACK_ROOT_REL}/${packId}/pack.json`),
+    icons: parsed.files,
+    manifest
+  };
 }
 
 app.get('/api/files/assets', async (req, res) => {
@@ -390,6 +473,28 @@ app.post('/api/files/upload', upload.single('file'), async (req, res) => {
     await fs.mkdir(target.full, { recursive: true });
 
     const uploadExt = path.extname(req.file.originalname || '').toLowerCase();
+    if (uploadExt === '.zip') {
+      const admin = requireLmiAdmin_(req, res, 'Admin account required to upload icon pack zips.');
+      if (!admin) return;
+
+      const result = await installIconPackFromZip_(req.file.buffer);
+      return res.json({
+        ok: true,
+        iconPack: true,
+        file: {
+          kind: 'icon-pack',
+          name: result.pack.name || result.pack.id,
+          path: result.url,
+          relPath: `${ICON_PACK_ROOT_REL}/${result.pack.id}/pack.json`,
+          type: 'icon-pack'
+        },
+        pack: result.pack,
+        icons: result.icons,
+        manifest: result.manifest,
+        message: `Installed icon pack ${result.pack.name || result.pack.id}.`
+      });
+    }
+
     const safe = safeAssetName_(req.body.filename || req.file.originalname, uploadExt);
 
     let finalName = `${safe.base}${safe.ext}`;
@@ -560,8 +665,8 @@ app.post('/api/files/write', express.text({ type: '*/*', limit: '2mb' }), async 
 
 app.post('/api/icon-packs/inspect', upload.single('file'), async (req, res) => {
   try {
-    requireAdminAsset_(req, res);
-    if (res.headersSent) return;
+    const admin = requireLmiAdmin_(req, res, 'Admin account required to inspect icon pack zips.');
+    if (!admin) return;
     if (!req.file) return res.status(400).json({ ok: false, error: 'No zip uploaded.' });
     if (path.extname(req.file.originalname || '').toLowerCase() !== '.zip') {
       return res.status(400).json({ ok: false, error: 'Icon pack upload must be a .zip file.' });
@@ -587,48 +692,21 @@ app.post('/api/icon-packs/inspect', upload.single('file'), async (req, res) => {
 
 app.post('/api/icon-packs/upload', upload.single('file'), async (req, res) => {
   try {
-    requireAdminAsset_(req, res);
-    if (res.headersSent) return;
+    const admin = requireLmiAdmin_(req, res, 'Admin account required to upload icon pack zips.');
+    if (!admin) return;
     if (!req.file) return res.status(400).json({ ok: false, error: 'No zip uploaded.' });
     if (path.extname(req.file.originalname || '').toLowerCase() !== '.zip') {
       return res.status(400).json({ ok: false, error: 'Icon pack upload must be a .zip file.' });
     }
 
-    const parsed = validateIconPackZip_(req.file.buffer);
-    const packId = safeIconPackId_(parsed.pack.id);
-    const destRoot = assetFullPath_(`${ICON_PACK_ROOT_REL}/${packId}`);
-    await fs.rm(destRoot.full, { recursive: true, force: true });
-    await fs.mkdir(path.join(destRoot.full, 'icons'), { recursive: true });
-
-    const entries = new Map(readZipEntries_(req.file.buffer)
-      .filter(entry => !String(entry.name || '').endsWith('/'))
-      .map(entry => [cleanZipPath_(entry.name), entry]));
-    const cleanPack = {
-      id: packId,
-      name: String(parsed.pack.name || packId).slice(0, 80),
-      type: parsed.pack.type || 'image',
-      fallback: parsed.pack.fallback || 'default',
-      apps: parsed.pack.apps || {},
-      aliases: parsed.pack.aliases || {}
-    };
-
-    for (const icon of parsed.files) {
-      const entry = entries.get(icon);
-      const data = zipEntryData_(req.file.buffer, entry);
-      const out = assetFullPath_(`${ICON_PACK_ROOT_REL}/${packId}/${icon}`);
-      await fs.mkdir(path.dirname(out.full), { recursive: true });
-      await fs.writeFile(out.full, data);
-    }
-
-    await fs.writeFile(path.join(destRoot.full, 'pack.json'), JSON.stringify(cleanPack, null, 2));
-    const manifest = await writeIconPackManifest_();
+    const result = await installIconPackFromZip_(req.file.buffer);
 
     res.json({
       ok: true,
-      pack: cleanPack,
-      url: assetWebPath_(`${ICON_PACK_ROOT_REL}/${packId}/pack.json`),
-      icons: parsed.files,
-      manifest
+      pack: result.pack,
+      url: result.url,
+      icons: result.icons,
+      manifest: result.manifest
     });
   } catch (err) {
     res.status(400).json({ ok: false, error: err.message || String(err) });
