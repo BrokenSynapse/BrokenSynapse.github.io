@@ -1,5 +1,5 @@
 (async function(){
-  const runtime=window.LMI_RUNTIME={user:null,session:null,apps:[],desktopState:null};
+  const runtime=window.LMI_RUNTIME={user:null,session:null,apps:[],desktopState:null,iconPack:null};
   const pendingLayoutSaves=new Set();
   let layoutSaveTimer=null;
   let scheduledLayoutSave=null;
@@ -7,6 +7,7 @@
   let remoteLayoutSaveInFlight=Promise.resolve();
   const $=id=>document.getElementById(id);
   const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+  const escHtml=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   function setStatus(txt,cls=''){ const el=$('loginStatus'); if(el){el.textContent=txt; el.className='login-status '+cls;} }
   function getInstalled(){ try{return JSON.parse(localStorage.getItem(LMI_CONFIG.localKeys.installed)||'null')}catch{return null} }
   function setInstalled(ids){ localStorage.setItem(LMI_CONFIG.localKeys.installed,JSON.stringify(ids)); }
@@ -370,7 +371,11 @@
     captureCurrentIconLayoutLocal_();
     reflowCurrentIconLayoutForPrefs_(oldPrefs,next);
     applyShellPrefs(next);
-    renderDesktop();
+    if((oldPrefs.iconPack||'default') !== (next.iconPack||'default')){
+      loadIconPack_(next.iconPack).then(()=>renderDesktop());
+    }else{
+      renderDesktop();
+    }
 
     if((opts&&opts.persist) && window.LMI_API?.callRelay){
       LMI_API.callRelay('user.shell.save',{prefs:next},runtime.user).catch(e=>console.warn('shell prefs DB save failed',e));
@@ -382,6 +387,43 @@
   function normalizeAssetUrl(src){ return window.LMI_NORMALIZE_ASSET_URL ? window.LMI_NORMALIZE_ASSET_URL(src) : String(src||'').trim(); }
   function applyWallpaper(user){ const desk=document.querySelector('.desktop'); const wp=normalizeAssetUrl(user?.wallpaper||user?.wp||localStorage.getItem('LMI_WALLPAPER')||''); if(wp){document.documentElement.style.setProperty('--wallpaper-url',`url("${wp}")`); desk?.classList.add('wallpapered')}else{document.documentElement.style.removeProperty('--wallpaper-url'); desk?.classList.remove('wallpapered')} }
   function setDesktopWallpaper(wp){ wp=normalizeAssetUrl(wp); if(wp){ localStorage.setItem('LMI_WALLPAPER',wp); } else { localStorage.removeItem('LMI_WALLPAPER'); } if(runtime.user){ runtime.user.wallpaper=wp; runtime.user.wp=wp; } applyWallpaper(runtime.user||{}); }
+  function packEntryForApp_(app){
+    const pack=runtime.iconPack;
+    if(!pack?.apps || !app) return null;
+    const aliases=pack.aliases || {};
+    const candidates=[app.id,app.key,app.k,String(app.name||'').replace(/\.LMX$/i,'')].map(x=>String(x||'').trim()).filter(Boolean);
+    candidates.slice().forEach(id=>{ if(aliases[id]) candidates.push(aliases[id]); });
+    for(const id of [...new Set(candidates)]){
+      if(pack.apps[id]) return pack.apps[id];
+      const lower=String(id).toLowerCase();
+      const hit=Object.entries(pack.apps).find(([k])=>String(k).toLowerCase()===lower);
+      if(hit) return hit[1];
+    }
+    return null;
+  }
+  async function loadIconPack_(id){
+    id=String(id||'default').trim();
+    if(!id || id==='default'){
+      runtime.iconPack=null;
+      document.body.dataset.iconPack='default';
+      return null;
+    }
+    try{
+      const res=await fetch(`/lmi/assets/icon-packs/${encodeURIComponent(id)}/pack.json`,{cache:'no-store'});
+      if(!res.ok) throw new Error(`Icon pack ${id} not found.`);
+      const pack=await res.json();
+      pack.id=pack.id||id;
+      pack.baseUrl=`/lmi/assets/icon-packs/${encodeURIComponent(id)}/`;
+      runtime.iconPack=pack;
+      document.body.dataset.iconPack=id;
+      return pack;
+    }catch(e){
+      console.warn('icon pack load failed',e);
+      runtime.iconPack=null;
+      document.body.dataset.iconPack='default';
+      return null;
+    }
+  }
   async function flushLayoutSaves(){
     if(scheduledLayoutSave) await runScheduledCurrentIconLayoutSave_();
     if(!pendingLayoutSaves.size) return;
@@ -568,7 +610,11 @@ function renderDesktop(){
       const rr=desktopBounds();
       b.style.left=clamp(ix,0,Math.max(0,rr.width-metrics.tileW))+'px';
       b.style.top=clamp(iy,0,Math.max(0,rr.height-metrics.tileH))+'px';
-      b.innerHTML=`<span class="icon-box">${app.icon||'□'}</span><strong>${app.name}</strong><em>${app.description||''}</em>`;
+      const packEntry=packEntryForApp_(app);
+      const displayName=packEntry?.name || app.name;
+      const packIcon=packEntry?.icon ? String(packEntry.icon).replace(/^\/+/,'') : '';
+      const iconUrl=packIcon && runtime.iconPack?.baseUrl ? runtime.iconPack.baseUrl + packIcon : '';
+      b.innerHTML=`<span class="icon-box">${iconUrl?`<img src="${iconUrl.replace(/"/g,'%22')}" alt="">`:escHtml(app.icon||'□')}</span><strong>${escHtml(displayName)}</strong>`;
 
       let moved=false, suppressClick=false, downAt=0;
 
@@ -695,6 +741,7 @@ function renderDesktop(){
             localStorage.setItem(SHELL_PREFS_KEY,JSON.stringify(dbShell));
             runtime.user.shellPrefs=dbShell;
             applyShellPrefs(dbShell);
+            await loadIconPack_(dbShell.iconPack);
           }
 
           const remote=data.apps.map(normalizeApp);

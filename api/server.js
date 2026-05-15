@@ -41,6 +41,9 @@ const ASSET_ALLOWED_EXT = new Set([
   '.pdf'
 ]);
 
+const ICON_PACK_ROOT_REL = 'icon-packs';
+const ICON_PACK_ALLOWED_ICON_EXT = new Set(['.png','.jpg','.jpeg','.webp','.gif','.svg']);
+
 function assetCleanPart_(part) {
   return String(part || '')
     .replace(/[^a-zA-Z0-9._() -]+/g, '')
@@ -111,6 +114,126 @@ function assetFullPath_(input) {
 function assetWebPath_(rel) {
   rel = assetRelFromInput_(rel);
   return rel ? `${ASSET_URL_PREFIX}/${rel}`.replace(/\/+/g, '/') : ASSET_URL_PREFIX;
+}
+
+function safeIconPackId_(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64) || 'icon-pack';
+}
+
+function readZipEntries_(buffer) {
+  const sig = 0x06054b50;
+  let eocd = -1;
+  for (let i = buffer.length - 22; i >= Math.max(0, buffer.length - 65558); i--) {
+    if (buffer.readUInt32LE(i) === sig) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error('Invalid zip: central directory not found.');
+
+  const count = buffer.readUInt16LE(eocd + 10);
+  const cdOffset = buffer.readUInt32LE(eocd + 16);
+  const entries = [];
+  let off = cdOffset;
+
+  for (let i = 0; i < count; i++) {
+    if (buffer.readUInt32LE(off) !== 0x02014b50) throw new Error('Invalid zip central directory.');
+    const method = buffer.readUInt16LE(off + 10);
+    const compressedSize = buffer.readUInt32LE(off + 20);
+    const uncompressedSize = buffer.readUInt32LE(off + 24);
+    const nameLen = buffer.readUInt16LE(off + 28);
+    const extraLen = buffer.readUInt16LE(off + 30);
+    const commentLen = buffer.readUInt16LE(off + 32);
+    const localOffset = buffer.readUInt32LE(off + 42);
+    const name = buffer.slice(off + 46, off + 46 + nameLen).toString('utf8').replace(/\\/g, '/');
+
+    entries.push({ name, method, compressedSize, uncompressedSize, localOffset });
+    off += 46 + nameLen + extraLen + commentLen;
+  }
+
+  return entries;
+}
+
+function zipEntryData_(buffer, entry) {
+  const off = entry.localOffset;
+  if (buffer.readUInt32LE(off) !== 0x04034b50) throw new Error('Invalid zip local header.');
+  const nameLen = buffer.readUInt16LE(off + 26);
+  const extraLen = buffer.readUInt16LE(off + 28);
+  const start = off + 30 + nameLen + extraLen;
+  const raw = buffer.slice(start, start + entry.compressedSize);
+
+  if (entry.method === 0) return raw;
+  if (entry.method === 8) return zlib.inflateRawSync(raw);
+  throw new Error(`Unsupported zip compression method ${entry.method}: ${entry.name}`);
+}
+
+function cleanZipPath_(value) {
+  const p = String(value || '').replace(/\\/g, '/').replace(/^\/+/, '');
+  if (!p || p.includes('\0') || p.split('/').some(part => !part || part === '.' || part === '..')) return '';
+  return p;
+}
+
+function validateIconPackZip_(buffer) {
+  const entries = readZipEntries_(buffer);
+  if (entries.length > 80) throw new Error('Icon pack zip has too many files.');
+
+  const byName = new Map();
+  for (const entry of entries) {
+    if (String(entry.name || '').endsWith('/')) continue;
+    const clean = cleanZipPath_(entry.name);
+    if (!clean) throw new Error(`Unsafe zip path: ${entry.name}`);
+    if (entry.uncompressedSize > 8 * 1024 * 1024) throw new Error(`Zip entry too large: ${clean}`);
+    byName.set(clean, entry);
+  }
+
+  const packEntry = byName.get('pack.json');
+  if (!packEntry) throw new Error('Icon pack must include pack.json at the zip root.');
+  const pack = JSON.parse(zipEntryData_(buffer, packEntry).toString('utf8'));
+  const packId = safeIconPackId_(pack.id || pack.name);
+  if (!packId || !pack.apps || typeof pack.apps !== 'object') throw new Error('pack.json must include id/name and apps.');
+
+  const files = [];
+  for (const [appId, spec] of Object.entries(pack.apps)) {
+    if (!spec || typeof spec !== 'object') throw new Error(`Invalid app entry: ${appId}`);
+    const icon = cleanZipPath_(spec.icon || '');
+    if (!icon) continue;
+    if (!icon.startsWith('icons/')) throw new Error(`Icon path must live under icons/: ${icon}`);
+    if (!ICON_PACK_ALLOWED_ICON_EXT.has(path.extname(icon).toLowerCase())) throw new Error(`Icon type not allowed: ${icon}`);
+    if (!byName.has(icon)) throw new Error(`Missing icon file referenced by pack.json: ${icon}`);
+    files.push(icon);
+  }
+
+  return {
+    pack: Object.assign({}, pack, { id: packId }),
+    files: [...new Set(files)].sort(),
+    entries: entries.filter(e => !String(e.name || '').endsWith('/')).map(e => ({ path: e.name, size: e.uncompressedSize, compressedSize: e.compressedSize }))
+  };
+}
+
+async function writeIconPackManifest_() {
+  const root = assetFullPath_(ICON_PACK_ROOT_REL);
+  await fs.mkdir(root.full, { recursive: true });
+  const dirs = await fs.readdir(root.full, { withFileTypes: true }).catch(() => []);
+  const packs = [];
+
+  for (const dir of dirs) {
+    if (!dir.isDirectory()) continue;
+    const manifestPath = path.join(root.full, dir.name, 'pack.json');
+    try {
+      const pack = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+      packs.push({
+        id: pack.id || dir.name,
+        name: pack.name || pack.id || dir.name,
+        type: pack.type || 'image',
+        manifest: assetWebPath_(`${ICON_PACK_ROOT_REL}/${dir.name}/pack.json`)
+      });
+    } catch {}
+  }
+
+  const manifest = { ok: true, packs: packs.sort((a, b) => String(a.name).localeCompare(String(b.name))) };
+  await fs.writeFile(path.join(root.full, 'manifest.json'), JSON.stringify(manifest, null, 2));
+  return manifest;
 }
 
 function normalizeLmiAssetUrl_(value) {
@@ -432,6 +555,92 @@ app.post('/api/files/write', express.text({ type: '*/*', limit: '2mb' }), async 
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message || String(err) });
+  }
+});
+
+app.post('/api/icon-packs/inspect', upload.single('file'), async (req, res) => {
+  try {
+    requireAdminAsset_(req, res);
+    if (res.headersSent) return;
+    if (!req.file) return res.status(400).json({ ok: false, error: 'No zip uploaded.' });
+    if (path.extname(req.file.originalname || '').toLowerCase() !== '.zip') {
+      return res.status(400).json({ ok: false, error: 'Icon pack upload must be a .zip file.' });
+    }
+
+    const parsed = validateIconPackZip_(req.file.buffer);
+    res.json({
+      ok: true,
+      pack: {
+        id: parsed.pack.id,
+        name: parsed.pack.name || parsed.pack.id,
+        type: parsed.pack.type || 'image',
+        appCount: Object.keys(parsed.pack.apps || {}).length,
+        aliases: parsed.pack.aliases || {}
+      },
+      icons: parsed.files,
+      entries: parsed.entries
+    });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message || String(err) });
+  }
+});
+
+app.post('/api/icon-packs/upload', upload.single('file'), async (req, res) => {
+  try {
+    requireAdminAsset_(req, res);
+    if (res.headersSent) return;
+    if (!req.file) return res.status(400).json({ ok: false, error: 'No zip uploaded.' });
+    if (path.extname(req.file.originalname || '').toLowerCase() !== '.zip') {
+      return res.status(400).json({ ok: false, error: 'Icon pack upload must be a .zip file.' });
+    }
+
+    const parsed = validateIconPackZip_(req.file.buffer);
+    const packId = safeIconPackId_(parsed.pack.id);
+    const destRoot = assetFullPath_(`${ICON_PACK_ROOT_REL}/${packId}`);
+    await fs.rm(destRoot.full, { recursive: true, force: true });
+    await fs.mkdir(path.join(destRoot.full, 'icons'), { recursive: true });
+
+    const entries = new Map(readZipEntries_(req.file.buffer)
+      .filter(entry => !String(entry.name || '').endsWith('/'))
+      .map(entry => [cleanZipPath_(entry.name), entry]));
+    const cleanPack = {
+      id: packId,
+      name: String(parsed.pack.name || packId).slice(0, 80),
+      type: parsed.pack.type || 'image',
+      fallback: parsed.pack.fallback || 'default',
+      apps: parsed.pack.apps || {},
+      aliases: parsed.pack.aliases || {}
+    };
+
+    for (const icon of parsed.files) {
+      const entry = entries.get(icon);
+      const data = zipEntryData_(req.file.buffer, entry);
+      const out = assetFullPath_(`${ICON_PACK_ROOT_REL}/${packId}/${icon}`);
+      await fs.mkdir(path.dirname(out.full), { recursive: true });
+      await fs.writeFile(out.full, data);
+    }
+
+    await fs.writeFile(path.join(destRoot.full, 'pack.json'), JSON.stringify(cleanPack, null, 2));
+    const manifest = await writeIconPackManifest_();
+
+    res.json({
+      ok: true,
+      pack: cleanPack,
+      url: assetWebPath_(`${ICON_PACK_ROOT_REL}/${packId}/pack.json`),
+      icons: parsed.files,
+      manifest
+    });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message || String(err) });
+  }
+});
+
+app.get('/api/icon-packs', async (req, res) => {
+  try {
+    const manifest = await writeIconPackManifest_();
+    res.json(manifest);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message || String(err), packs: [] });
   }
 });
 

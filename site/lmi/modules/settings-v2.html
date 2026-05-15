@@ -122,7 +122,16 @@
             <label class="range">Icon Size: <strong id="iconSizeLabel">60</strong><input id="iconSizeInput" type="range" min="44" max="120" value="72"></label>
             <label class="check"><input id="gridSnapInput" type="checkbox"> Grid snap</label>
             <label>Module Icon Pack<select id="iconPackSelect"></select></label>
-            <p class="sv2-muted">Icon packs can later point to sprite sheets. Default uses plaintext/special-character module icons.</p>
+            <p class="sv2-muted">Default uses plaintext/special-character module icons.</p>
+            <div id="iconPackAdmin" class="sv2-admin-pack" hidden>
+              <label>Admin Token<input id="iconPackTokenInput" type="password" autocomplete="off"></label>
+              <label>Upload Icon Pack Zip<input id="iconPackZipInput" type="file" accept=".zip,application/zip"></label>
+              <div class="row">
+                <button id="inspectIconPackBtn" type="button">Inspect Zip</button>
+                <button id="uploadIconPackBtn" type="button" class="good">Upload Zip</button>
+              </div>
+              <pre id="iconPackStatus" class="sv2-pack-status"></pre>
+            </div>
           </div>
 
           <div class="sv2-card">
@@ -150,6 +159,6 @@
     </main>
   </div>
 
-  <script src="settings-v2.js?v=1778727280"></script>
+  <script src="settings-v2.js?v=2026051503"></script>
 </body>
 </html>

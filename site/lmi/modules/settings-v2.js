@@ -21,7 +21,8 @@
   let state = {
     user:null,
     options:{ occupations:[], currencies:[], accessLevels:[], statuses:[] },
-    testAudio:null
+    testAudio:null,
+    iconPacks:[]
   };
 
   function parse(v){
@@ -117,6 +118,69 @@
     });
 
     if(current) sel.value = current;
+  }
+
+  function isAdmin(){
+    const u = state.user || currentUserHint() || {};
+    return String(u.access || u.al || u.role || '').toLowerCase() === 'admin';
+  }
+
+  async function loadIconPacks(){
+    try{
+      const res = await fetch('/api/icon-packs', { cache:'no-store' });
+      const data = await res.json();
+      state.iconPacks = Array.isArray(data.packs) ? data.packs : [];
+    }catch{
+      state.iconPacks = [];
+    }
+  }
+
+  function paintIconPackOptions(){
+    const p = prefs();
+    const sel = $('iconPackSelect');
+    sel.innerHTML = '';
+
+    [{ id:'default', name:'default' }].concat(state.iconPacks).forEach(pack => {
+      const opt = document.createElement('option');
+      opt.value = pack.id;
+      opt.textContent = pack.name || pack.id;
+      sel.appendChild(opt);
+    });
+
+    sel.value = p.iconPack || 'default';
+    const admin = $('iconPackAdmin');
+    if(admin) admin.hidden = !isAdmin();
+  }
+
+  async function sendIconPackZip(mode){
+    const file = $('iconPackZipInput')?.files?.[0];
+    const token = $('iconPackTokenInput')?.value || '';
+    const out = $('iconPackStatus');
+
+    if(!file){
+      out.textContent = 'Select a .zip file first.';
+      return;
+    }
+
+    const form = new FormData();
+    form.append('file', file, file.name);
+    out.textContent = mode === 'upload' ? 'Uploading icon pack...' : 'Inspecting icon pack...';
+
+    try{
+      const res = await fetch(`/api/icon-packs/${mode}`, {
+        method:'POST',
+        headers:{'x-admin-token': token},
+        body:form
+      });
+      const data = await res.json();
+      out.textContent = JSON.stringify(data, null, 2);
+      if(data.ok && mode === 'upload'){
+        await loadIconPacks();
+        paintDesktop();
+      }
+    }catch(e){
+      out.textContent = e.message || String(e);
+    }
   }
 
   function normalizeTheme(vars){
@@ -478,7 +542,7 @@
     $('gridSnapInput').checked = p.gridSnap !== false;
     $('hideTaskbarInput').checked = !!p.hiddenTaskbar;
 
-    fillSelect($('iconPackSelect'), ['default'], p.iconPack || 'default');
+    paintIconPackOptions();
   }
 
   function refreshState(){
@@ -531,6 +595,8 @@
     $('gridSnapInput').addEventListener('change', applyDesktopPrefs);
     $('hideTaskbarInput').addEventListener('change', applyDesktopPrefs);
     $('iconPackSelect').addEventListener('change', applyDesktopPrefs);
+    $('inspectIconPackBtn')?.addEventListener('click', () => sendIconPackZip('inspect'));
+    $('uploadIconPackBtn')?.addEventListener('click', () => sendIconPackZip('upload'));
     $('saveDesktopBtn').onclick = saveDesktop;
 
     $('refreshStateBtn').onclick = refreshState;
@@ -554,6 +620,7 @@
     if(shell.ok){
       state.user.shellPrefs = shell.data.shellPrefs || shell.data.prefs || state.user.shellPrefs || {};
     }
+    await loadIconPacks();
     syncParentUser();
     paintAccount();
     paintDesktop();
