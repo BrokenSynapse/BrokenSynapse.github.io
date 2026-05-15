@@ -1410,8 +1410,18 @@ function chatPost(payload, user) {
   append_('chatPosts', { pid: 'p_' + Date.now(), rid: payload.room || 'random', cid: c.cid, t: now_(), kind: 'msg', blob: pack_(post) });
   return { posted: true };
 }
-function bodyMods() { ensureSheet_('mods', ['mid','slot','nm','cat','st','mfg','desc','fx','draw','rare','compat','diff','vis','lockChild','locks','replace','cost','unCost','validSlots','supportType','lmexCertified','cardiovascularOutput','pressureTolerance','renalClearance','hepaticProcessing','thermalLoad','neuralBuffer','sleepState','glucoseElectrolyte','supportNotes']); return { mods: rows_('mods') }; }
-function bodySlots() { ensureSheet_('bodySlots', ['slot','label','region','ord','note']); return { slots: rows_('bodySlots').map(r => r.slot || r.label).filter(Boolean) }; }
+function bodyMods() { ensureSheet_('mods', ['mid','slot','nm','cat','st','mfg','desc','fx','draw','rare','compat','diff','vis','lockChild','locks','replace','cost','unCost','validSlots','supportType','lmexCertified','cardiovascularOutput','pressureTolerance','renalClearance','hepaticProcessing','thermalLoad','neuralBuffer','sleepState','glucoseElectrolyte','supportNotes','img','image','imageUrl','layer','z','opacity']); return { mods: rows_('mods') }; }
+function bodySlots() {
+  ensureSheet_('bodySlots', ['slot','label','region','ord','note']);
+  const rows = rows_('bodySlots').map(r => ({
+    slot: r.slot || r.id || r.label || '',
+    label: r.label || r.name || r.slot || '',
+    region: r.region || '',
+    ord: r.ord || r.order || '',
+    note: r.note || r.desc || ''
+  })).filter(r => r.slot || r.label);
+  return { slots: rows };
+}
 function workJobs() { return { jobs: rows_('work') }; }
 function workCashOut(payload, user) {
   const c = coreFromUser_(user); const amount = Math.round(Number(payload.amount || 0) * 100);
