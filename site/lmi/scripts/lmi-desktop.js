@@ -562,7 +562,18 @@
   }
 
 
-  function normalizeApp(a){return {id:a.id||a.appId, key:a.key||a.k, hasLayout:!!a.hasLayout, name:a.name||a.nm||a.id, title:a.title||a.name||a.nm, path:a.path||a.modulePath, icon:a.icon||a.ico||'□', description:a.description||a.desc||'', w:Number(a.w||a.defaultW||900), h:Number(a.h||a.defaultH||620), x:Number(a.x||80), y:Number(a.y||70), iconX:a.iconX===undefined?undefined:Number(a.iconX), iconY:a.iconY===undefined?undefined:Number(a.iconY)} }
+  const MODULE_PATH_OVERRIDES={
+    bodyMods:'modules/bodyMods.html?v=2026051505',
+    fileExplorer:'modules/fileExplorer.html?v=2026051504'
+  };
+  function modulePathForApp_(a){
+    const id=String(a?.id||a?.appId||'').trim();
+    const key=String(a?.key||a?.k||'').trim();
+    if(MODULE_PATH_OVERRIDES[id]) return MODULE_PATH_OVERRIDES[id];
+    if(MODULE_PATH_OVERRIDES[key]) return MODULE_PATH_OVERRIDES[key];
+    return a.path||a.modulePath;
+  }
+  function normalizeApp(a){return {id:a.id||a.appId, key:a.key||a.k, hasLayout:!!a.hasLayout, name:a.name||a.nm||a.id, title:a.title||a.name||a.nm, path:modulePathForApp_(a), icon:a.icon||a.ico||'□', description:a.description||a.desc||'', w:Number(a.w||a.defaultW||900), h:Number(a.h||a.defaultH||620), x:Number(a.x||80), y:Number(a.y||70), iconX:a.iconX===undefined?undefined:Number(a.iconX), iconY:a.iconY===undefined?undefined:Number(a.iconY)} }
   function visibleApps(){ const installed=(runtime.session?.mode==='relay')?null:getInstalled(); return runtime.apps.filter(a=>!installed||installed.includes(a.id)||['settings','bipac','fileExplorer'].includes(a.id)); }
   function desktopBounds(){
     // Pass 10: icon dragging must be bounded by the real desktop workspace,
