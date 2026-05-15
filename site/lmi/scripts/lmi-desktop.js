@@ -1,6 +1,9 @@
 (async function(){
   const runtime=window.LMI_RUNTIME={user:null,session:null,apps:[],desktopState:null};
   const pendingLayoutSaves=new Set();
+  let layoutSaveTimer=null;
+  let scheduledLayoutSave=null;
+  let resolveScheduledLayoutSave=null;
   const $=id=>document.getElementById(id);
   const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
   function setStatus(txt,cls=''){ const el=$('loginStatus'); if(el){el.textContent=txt; el.className='login-status '+cls;} }
@@ -329,6 +332,7 @@
   function applyWallpaper(user){ const desk=document.querySelector('.desktop'); const wp=normalizeAssetUrl(user?.wallpaper||user?.wp||localStorage.getItem('LMI_WALLPAPER')||''); if(wp){document.documentElement.style.setProperty('--wallpaper-url',`url("${wp}")`); desk?.classList.add('wallpapered')}else{document.documentElement.style.removeProperty('--wallpaper-url'); desk?.classList.remove('wallpapered')} }
   function setDesktopWallpaper(wp){ wp=normalizeAssetUrl(wp); if(wp){ localStorage.setItem('LMI_WALLPAPER',wp); } else { localStorage.removeItem('LMI_WALLPAPER'); } if(runtime.user){ runtime.user.wallpaper=wp; runtime.user.wp=wp; } applyWallpaper(runtime.user||{}); }
   async function flushLayoutSaves(){
+    if(scheduledLayoutSave) await runScheduledCurrentIconLayoutSave_();
     if(!pendingLayoutSaves.size) return;
     const saves=[...pendingLayoutSaves];
     await Promise.allSettled(saves);
@@ -357,6 +361,48 @@
     console.warn('[LMI] saveCurrentIconLayout could not call relay',{hasApi:!!window.LMI_API?.callRelay,user:runtime.user});
     return {ok:false,saved:false,count:captured.count};
   }
+  function scheduleCurrentIconLayoutSave_(){
+    captureCurrentIconLayoutLocal_();
+
+    if(!window.LMI_API?.callRelay || !runtime.user){
+      return Promise.resolve({ok:false,saved:false,scheduled:false});
+    }
+
+    if(layoutSaveTimer) clearTimeout(layoutSaveTimer);
+
+    if(!scheduledLayoutSave){
+      scheduledLayoutSave=new Promise(resolve=>{ resolveScheduledLayoutSave=resolve; });
+      pendingLayoutSaves.add(scheduledLayoutSave);
+    }
+
+    layoutSaveTimer=setTimeout(()=>{ runScheduledCurrentIconLayoutSave_(); },350);
+    return scheduledLayoutSave;
+  }
+
+  async function runScheduledCurrentIconLayoutSave_(){
+    if(layoutSaveTimer){
+      clearTimeout(layoutSaveTimer);
+      layoutSaveTimer=null;
+    }
+
+    const scheduled=scheduledLayoutSave;
+    const resolve=resolveScheduledLayoutSave;
+    scheduledLayoutSave=null;
+    resolveScheduledLayoutSave=null;
+
+    let result;
+    try{
+      result=await saveCurrentIconLayout();
+      return result;
+    }catch(e){
+      console.warn('scheduled desktop layout save failed',e);
+      result={ok:false,error:e.message||String(e)};
+      return result;
+    }finally{
+      if(scheduled) pendingLayoutSaves.delete(scheduled);
+      if(resolve) resolve(result);
+    }
+  }
 
   window.LMI_DESKTOP={
     getSavedWindow(id){return getLayout()[id]||null},
@@ -375,20 +421,8 @@
       saveLayout(l);
 
       if(window.LMI_API?.callRelay && runtime.user){
-        const savePromise=LMI_API.callRelay('saveDesktopLayout', {
-          appId,
-          key,
-          id: appId,
-          layout: data
-        }, runtime.user).then(resp => {
-          if(!resp?.ok) console.warn('saveDesktopLayout failed', appId, key, resp);
-          else console.log('[LMI] saved desktop layout', appId, key, data);
-          return resp;
-        }).catch(e => console.warn('saveDesktopLayout failed', appId, key, e));
-        pendingLayoutSaves.add(savePromise);
-        savePromise.finally(()=>pendingLayoutSaves.delete(savePromise));
-        return savePromise;
-      } else {
+        return scheduleCurrentIconLayoutSave_();
+      }else{
         console.warn('[LMI] saveWindow could not call relay', {hasApi:!!window.LMI_API?.callRelay, user:runtime.user, id, data});
       }
       return Promise.resolve(null);
