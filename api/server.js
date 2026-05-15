@@ -1362,7 +1362,7 @@ function catalogSearch(payload) {
   const limit = Math.min(Number(payload && payload.limit || 500), 5000);
   const all = rows_('catalog').map(r => {
     const price = pick_(r, ['price','Price','retail','Retail','cost','Cost'], '') !== '' ? moneyVal_(pick_(r, ['price','Price','retail','Retail','cost','Cost'], 0)) : centsToNumber_(pick_(r, ['cents','Cents'], 0));
-    return { id: pick_(r,['iid','id','ID','Item ID','itemId'],''), sku: pick_(r,['pn','sku','SKU','part','Part Number','Part'],''), upc: pick_(r,['upc','UPC'],''), name: pick_(r,['nm','name','Name','item','Item','description','Description'],''), price, manufacturer: pick_(r,['mfg','manufacturer','Manufacturer','brand','Brand'],''), description: pick_(r,['desc','description','Description','notes','Notes'],''), category: [pick_(r,['c1','Main Category','mainCategory','Department','department'],''), pick_(r,['c2','Second Category','secondCategory','Category','category'],''), pick_(r,['c3','Third Category','thirdCategory','Subcategory','subcategory'], '')].filter(Boolean).join(' / '), image: pick_(r,['img','image','Image','imageUrl','Image URL'],''), quality: pick_(r,['q','quality','Quality','qualityTier'], '') };
+    return { id: pick_(r,['iid','id','ID','Item ID','itemId'],''), sku: pick_(r,['pn','sku','SKU','part','Part Number','Part'],''), upc: pick_(r,['upc','UPC'],''), name: pick_(r,['nm','name','Name','item','Item','description','Description'],''), price, manufacturer: pick_(r,['mfg','manufacturer','Manufacturer','brand','Brand'],''), description: pick_(r,['desc','description','Description','notes','Notes'],''), category: [pick_(r,['c1','Main Category','mainCategory','Department','department'],''), pick_(r,['c2','Second Category','secondCategory','Category','category'],''), pick_(r,['c3','Third Category','thirdCategory','Subcategory','subcategory'], '')].filter(Boolean).join(' / '), image: pick_(r,['img','image','Image','imageUrl','Image URL'],''), quality: pick_(r,['q','quality','Quality','qualityTier'], ''), invShape: pick_(r,['invShape','shape','gridShape','Inventory Shape'],''), invW: pick_(r,['invW','shapeW','gridW'],''), invH: pick_(r,['invH','shapeH','gridH'],''), invSlots: pick_(r,['invSlots','slots','slotCount'],''), isStackable: pick_(r,['isStackable','stackable'],''), maxStack: pick_(r,['maxStack','stackMax'],'') };
   });
   return { items: all.filter(x => !q || JSON.stringify(x).toLowerCase().indexOf(q) >= 0).slice(0, limit) };
 }
@@ -1400,6 +1400,92 @@ function writeLedger_(cid, bid, type, cents, cur, memo, by, blobObj) {
   append_('bank', { lid: 'l_' + Date.now(), bid, cid, t: now_(), typ: type, amt: cents, cur, memo, by, blob: blobObj ? pack_(blobObj) : '' });
 }
 
+const QVAULT_HEADERS = ['id','cid','source','sourceId','kind','name','qty','shape','shapeW','shapeH','slots','stackable','maxStack','x','y','rot','status','action','createdAt','updatedAt','blob'];
+
+function normalizeInvShape_(item) {
+  const raw = String(pick_(item || {}, ['invShape','shape','gridShape','Inventory Shape'], '') || '').trim();
+  const compact = raw.replace(/[^01]/g, '');
+  const cells = (compact || '1').slice(0, 15).padEnd(15, '0');
+  const w = Math.max(1, Math.min(5, Number(pick_(item || {}, ['invW','shapeW','gridW'], 5)) || 5));
+  const h = Math.max(1, Math.min(3, Number(pick_(item || {}, ['invH','shapeH','gridH'], 3)) || 3));
+  const area = Math.max(1, cells.split('').filter(x => x === '1').length);
+  return { shape: cells, shapeW: w, shapeH: h, slots: Number(pick_(item || {}, ['invSlots','slots','slotCount'], area)) || area };
+}
+
+function qvaultItemFromSource_(c, source, item, qty) {
+  const shape = normalizeInvShape_(item);
+  const id = 'qv_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+  const sourceId = String(item.id || item.iid || item.pid || item.mid || item.sku || item.pn || item.name || id);
+  const name = String(item.name || item.nm || item.label || item.sku || item.mid || sourceId);
+  const kind = String(item.kind || item.itemKind || item.cat || item.category || source || 'item');
+  const stackable = boolish_(pick_(item, ['isStackable','stackable'], shape.slots === 1 ? 'TRUE' : 'FALSE'));
+  const maxStack = Math.max(1, Number(pick_(item, ['maxStack','stackMax'], stackable ? 99 : 1)) || 1);
+  return {
+    id,
+    cid: c.cid,
+    source,
+    sourceId,
+    kind,
+    name,
+    qty: Math.max(1, Number(qty || 1)),
+    shape: shape.shape,
+    shapeW: shape.shapeW,
+    shapeH: shape.shapeH,
+    slots: shape.slots,
+    stackable: stackable ? 'TRUE' : 'FALSE',
+    maxStack,
+    x: '',
+    y: '',
+    rot: 0,
+    status: 'stored',
+    action: '',
+    createdAt: now_(),
+    updatedAt: now_(),
+    blob: pack_(item || {})
+  };
+}
+
+function qvaultAdd_(c, source, items) {
+  const rows = [];
+  (Array.isArray(items) ? items : [items]).filter(Boolean).forEach(entry => {
+    const item = entry.item || entry;
+    const qty = entry.qty || item.qty || 1;
+    rows.push(qvaultItemFromSource_(c, source, item, qty));
+  });
+  rows.forEach(row => appendSafe_('qvault', QVAULT_HEADERS, row));
+  return rows;
+}
+
+function qvaultList(payload, user) {
+  const c = coreFromUser_(user);
+  ensureSheet_('qvault', QVAULT_HEADERS);
+  const items = rows_('qvault').filter(r => r.cid === c.cid).map(r => Object.assign({}, r, { data: unpackSafe_(r.blob) }));
+  return { width: 9, height: 21, items };
+}
+
+function qvaultAdd(payload, user) {
+  const c = coreFromUser_(user);
+  const added = qvaultAdd_(c, String(payload.source || 'manual'), payload.items || payload.item || payload);
+  appendSafe_('audit', ['id','t','cid','action','ok','blob'], { id:'a_'+Date.now(), t:now_(), cid:c.cid, action:'qvault.add', ok:1, blob:pack_({ count:added.length }) });
+  return { added };
+}
+
+function qvaultMove(payload, user) {
+  const c = coreFromUser_(user);
+  const id = String(payload.id || '');
+  const changed = updateRows_('qvault', r => r.cid === c.cid && r.id === id, r => ({ x: payload.x, y: payload.y, rot: payload.rot || 0, updatedAt: now_() }));
+  return { moved: !!changed, id };
+}
+
+function qvaultAction(payload, user) {
+  const c = coreFromUser_(user);
+  const id = String(payload.id || '');
+  const action = String(payload.action || '').trim();
+  const changed = updateRows_('qvault', r => r.cid === c.cid && r.id === id, r => ({ action, status: action || r.status || 'stored', updatedAt: now_() }));
+  appendSafe_('audit', ['id','t','cid','action','ok','blob'], { id:'a_'+Date.now(), t:now_(), cid:c.cid, action:'qvault.action:'+action, ok:changed ? 1 : 0, blob:pack_(payload) });
+  return { ok: !!changed, id, action };
+}
+
 function chatRooms() { return { rooms: rows_('chatRooms').map(r => ({ id: r.rid, board: r.board, title: r.title, description: r.desc, access: r.access, locked: bool_(r.locked), order: Number(r.ord || 0) })) }; }
 function chatPosts(payload) {
   const rid = payload && payload.room || payload && payload.rid || 'random';
@@ -1410,7 +1496,7 @@ function chatPost(payload, user) {
   append_('chatPosts', { pid: 'p_' + Date.now(), rid: payload.room || 'random', cid: c.cid, t: now_(), kind: 'msg', blob: pack_(post) });
   return { posted: true };
 }
-function bodyMods() { ensureSheet_('mods', ['mid','slot','nm','cat','st','mfg','desc','fx','draw','rare','compat','diff','vis','lockChild','locks','replace','cost','unCost','validSlots','supportType','lmexCertified','cardiovascularOutput','pressureTolerance','renalClearance','hepaticProcessing','thermalLoad','neuralBuffer','sleepState','glucoseElectrolyte','supportNotes','img','image','imageUrl','layer','z','opacity']); return { mods: rows_('mods') }; }
+function bodyMods() { ensureSheet_('mods', ['mid','slot','nm','cat','st','mfg','desc','fx','draw','rare','compat','diff','vis','lockChild','locks','replace','cost','unCost','validSlots','supportType','lmexCertified','cardiovascularOutput','pressureTolerance','renalClearance','hepaticProcessing','thermalLoad','neuralBuffer','sleepState','glucoseElectrolyte','supportNotes','img','image','imageUrl','layer','z','opacity','invShape','invW','invH','invSlots','isStackable','maxStack']); return { mods: rows_('mods') }; }
 function bodySlots() {
   ensureSheet_('bodySlots', ['slot','label','parentSlot','region','ord','note','category','isSlot','accepts','blocks','exclusiveGroup']);
   const rows = rows_('bodySlots').map(r => ({
@@ -1463,8 +1549,9 @@ function posTender(payload, user) {
   const txid = 'tx_' + Date.now();
   writeLedger_(c.cid, c.bid, 'pos', cents, c.cur || 'LGD', 'POS tender: ' + (payload.itemCount || 0) + ' item(s)', c.tag, payload);
   appendSafe_('posTx', ['txid','cid','t','total','subtotal','discount','items','blob'], { txid, cid: c.cid, t: now_(), total: Math.round(total * 100), subtotal: Math.round(Number(payload.subtotal || 0) * 100), discount: Math.round(Number(payload.discount || 0) * 100), items: payload.itemCount || 0, blob: pack_(payload) });
+  const inventory = qvaultAdd_(c, 'pos', (payload.items || []).map(line => ({ item: Object.assign({ kind:'pos' }, line.item || {}, { name: line.name, sku: line.sku }), qty: line.qty || 1 })));
   append_('audit', { id: 'a_' + Date.now(), t: now_(), cid: c.cid, action: 'pos.tender', ok: 1, blob: pack_(payload) });
-  return { tendered: true, txid, cents };
+  return { tendered: true, txid, cents, inventory };
 }
 function vehiclesBuy(payload, user) {
   const c = coreFromUser_(user);
@@ -1566,7 +1653,7 @@ function pharmaNormalize_(r) {
     labelUse: pick_(r,['labelUse','suggestedUse','Suggested Use','use'],''), price: price, buyable: boolish_(pick_(r,['buyable','Buyable'],true)), subscription: boolish_(pick_(r,['subscription','Subscription'],false)),
     purityGrade: pick_(r,['purityGrade','Purity Grade'],''), workUtility: pick_(r,['workUtility','Work Utility'],''), shiftCompatibility: pick_(r,['shiftCompatibility','Shift Compatibility'],''),
     dependency: n_(pick_(r,['dependency','addictiveness','Addictiveness'],0)), tolerance: n_(pick_(r,['tolerance','toleranceBuildup'],0)), withdrawal: n_(pick_(r,['withdrawal','withdrawalBurden'],0)), abuseLoop: n_(pick_(r,['abuseLoop','abuseLoopRisk'],0)), supportNeed: n_(pick_(r,['supportNeed','support'],0)),
-    requiredRatings: pick_(r,['requiredRatings','Required Ratings'],''), disclaimers: pick_(r,['disclaimers','Disclaimer'],''), warnings: pick_(r,['warnings','Warnings'],''), effects: pick_(r,['effects','Effects'],''), sideEffects: pick_(r,['sideEffects','Side Effects'],''), interactions: pick_(r,['interactions','Interactions'],''), tags: pick_(r,['tags','Tags'],''), structure: pick_(r,['structure','Structure'],''), image: pick_(r,['img','image','Image','imageUrl'],''), description: pick_(r,['desc','description','Description'],'')
+    requiredRatings: pick_(r,['requiredRatings','Required Ratings'],''), disclaimers: pick_(r,['disclaimers','Disclaimer'],''), warnings: pick_(r,['warnings','Warnings'],''), effects: pick_(r,['effects','Effects'],''), sideEffects: pick_(r,['sideEffects','Side Effects'],''), interactions: pick_(r,['interactions','Interactions'],''), tags: pick_(r,['tags','Tags'],''), structure: pick_(r,['structure','Structure'],''), image: pick_(r,['img','image','Image','imageUrl'],''), description: pick_(r,['desc','description','Description'],''), invShape: pick_(r,['invShape','shape','gridShape','Inventory Shape'],''), invW: pick_(r,['invW','shapeW','gridW'],''), invH: pick_(r,['invH','shapeH','gridH'],''), invSlots: pick_(r,['invSlots','slots','slotCount'],''), isStackable: pick_(r,['isStackable','stackable'],''), maxStack: pick_(r,['maxStack','stackMax'],'')
   };
 }
 function pharmaSearch(payload) {
@@ -1611,7 +1698,8 @@ function pharmaBuy(payload, user) {
   var cents = -Math.round(amount * 100);
   writeLedger_(c.cid, c.bid, 'pharma', cents, c.cur || 'LGD', 'PHARMA purchase: ' + item.name + ' x' + qty, c.tag, { item:item, qty:qty, compat:compat });
   appendSafe_('pharmaOrders', ['orderId','cid','t','pid','sku','qty','amount','compatOk','missing','blob'], { orderId:'rx_'+Date.now(), cid:c.cid, t:now_(), pid:item.pid, sku:item.sku, qty:qty, amount:Math.round(amount*100), compatOk: compat.ok ? 1 : 0, missing: JSON.stringify(compat.missing || []), blob:pack_({ item:item, qty:qty, compat:compat }) });
-  return { bought:true, item:item, qty:qty, amount:amount, compat:compat };
+  var inventory = qvaultAdd_(c, 'pharma', { item:Object.assign({ kind:'pharma' }, item), qty:qty });
+  return { bought:true, item:item, qty:qty, amount:amount, compat:compat, inventory:inventory };
 }
 function pharmaAdd(payload, user) {
   var record = payload.record || payload || {};
@@ -1649,7 +1737,7 @@ function currencyPresets(payload, user) {
   }
 }
 function dataAppend(payload, user) {
-  const allowed = ['core','catalog','vehicles','mods','bodySlots','bodyCategories','dictApps','themes','chatRooms','work','pharmaItems','currencySettings','bodyProfiles','bodyInstalled'];
+  const allowed = ['core','catalog','vehicles','mods','bodySlots','bodyCategories','dictApps','themes','chatRooms','work','pharmaItems','currencySettings','bodyProfiles','bodyInstalled','qvault'];
   const sheet = String(payload && payload.sheet || '').trim();
   if (allowed.indexOf(sheet) < 0) throw new Error('DataForge refused sheet: ' + sheet);
   const record = payload.record || {};
@@ -1812,6 +1900,10 @@ const routes = {
   'vehicles.buy': vehiclesBuy,
   'bank.getAccount': bankGetAccount,
   'bank.ledger': bankLedger,
+  'qvault.list': qvaultList,
+  'qvault.add': qvaultAdd,
+  'qvault.move': qvaultMove,
+  'qvault.action': qvaultAction,
   'core.search': coreSearch,
   'pos.tender': posTender,
   'chat.rooms': chatRooms,
@@ -2172,7 +2264,7 @@ desk_rows = json.loads(desk_row[0]) if desk_row and desk_row[0] else []
 
 if not any(str(d.get("cid","")) == cid for d in desk_rows):
     # Current standard app set, excluding legacy ThemeLab.
-    default_apps = "b,x,k,w,r,m,ph,s,h,p,d,fe,df"
+    default_apps = "b,x,k,w,r,m,ph,s,h,p,d,fe,df,qv"
     default_lay = (
         "b:0,0,120,90,800,600,0,0;"
         "x:106,0,120,90,800,600,0,0;"
@@ -2186,7 +2278,8 @@ if not any(str(d.get("cid","")) == cid for d in desk_rows):
         "p:530,0,120,90,800,600,0,0;"
         "d:636,0,120,90,800,600,0,0;"
         "fe:530,115,120,90,800,600,0,0;"
-        "df:0,115,120,90,800,600,0,0"
+        "df:0,115,120,90,800,600,0,0;"
+        "qv:106,230,120,90,980,760,0,0"
     )
 
     desk_rows.append({

@@ -536,9 +536,9 @@
   runtime.previewShellPrefs=previewShellPrefs;
   async function loadManifest(){ try{ const res=await fetch(LMI_CONFIG.manifestPath,{cache:'no-store'}); if(res.ok)return await res.json(); }catch{} return []; }
 
-  function ensureFileExplorerApp(apps){
+  function ensureCoreUtilityApps(apps){
     apps = Array.isArray(apps) ? apps : [];
-    const app = {
+    const utilityApps = [{
       id:'fileExplorer',
       name:'FileExplorer.LMX',
       title:'FileExplorer.LMX',
@@ -546,24 +546,33 @@
       module:'modules/fileExplorer.html?v=2026051504',
       url:'modules/fileExplorer.html?v=2026051504',
       desc:'Profile and item asset manager'
-    };
+    },{
+      id:'qvault',
+      name:'QVault.LMX',
+      title:'QVault.LMX',
+      icon:'QV',
+      module:'modules/qvault.html?v=2026051501',
+      url:'modules/qvault.html?v=2026051501',
+      desc:'Personal inventory grid',
+      w:980,
+      h:760
+    }];
 
-    const idx = apps.findIndex(a => a && (a.id === 'fileExplorer' || a.name === 'FileExplorer.LMX'));
-    if(idx >= 0){
-      apps[idx] = Object.assign({}, app, apps[idx], {
-        id:'fileExplorer',
-        module:'modules/fileExplorer.html?v=2026051504',
-        url:'modules/fileExplorer.html?v=2026051504'
-      });
-    } else {
-      apps.push(app);
-    }
+    utilityApps.forEach(app => {
+      const idx = apps.findIndex(a => a && (a.id === app.id || a.name === app.name));
+      if(idx >= 0) apps[idx] = Object.assign({}, app, apps[idx], { id:app.id, module:app.module, url:app.url });
+      else apps.push(app);
+    });
     return apps;
   }
 
 
   const MODULE_PATH_OVERRIDES={
     bodyMods:'modules/bodyMods.html?v=2026051507',
+    dataEditor:'modules/dataEditor.html?v=2026051501',
+    pharma:'modules/pharma.html?v=2026051501',
+    pointOfSale:'modules/pointOfSale.html?v=2026051501',
+    qvault:'modules/qvault.html?v=2026051501',
     fileExplorer:'modules/fileExplorer.html?v=2026051504'
   };
   function modulePathForApp_(a){
@@ -574,7 +583,7 @@
     return a.path||a.modulePath;
   }
   function normalizeApp(a){return {id:a.id||a.appId, key:a.key||a.k, hasLayout:!!a.hasLayout, name:a.name||a.nm||a.id, title:a.title||a.name||a.nm, path:modulePathForApp_(a), icon:a.icon||a.ico||'□', description:a.description||a.desc||'', w:Number(a.w||a.defaultW||900), h:Number(a.h||a.defaultH||620), x:Number(a.x||80), y:Number(a.y||70), iconX:a.iconX===undefined?undefined:Number(a.iconX), iconY:a.iconY===undefined?undefined:Number(a.iconY)} }
-  function visibleApps(){ const installed=(runtime.session?.mode==='relay')?null:getInstalled(); return runtime.apps.filter(a=>!installed||installed.includes(a.id)||['settings','bipac','fileExplorer'].includes(a.id)); }
+  function visibleApps(){ const installed=(runtime.session?.mode==='relay')?null:getInstalled(); return runtime.apps.filter(a=>!installed||installed.includes(a.id)||['settings','bipac','fileExplorer','qvault'].includes(a.id)); }
   function desktopBounds(){
     // Pass 10: icon dragging must be bounded by the real desktop workspace,
     // not the icon layer. The icon layer can report a bogus/child-sized
@@ -760,7 +769,7 @@ function renderDesktop(){
           hydrateLayoutFromApps_(remote);
           const byId=new Map(remote.map(a=>[a.id,a]));
           manifest.forEach(a=>{
-            if(['settings','bipac','fileExplorer'].includes(a.id) && !byId.has(a.id)) remote.push(a);
+            if(['settings','bipac','fileExplorer','qvault'].includes(a.id) && !byId.has(a.id)) remote.push(a);
           });
           return remote;
         }
@@ -788,7 +797,7 @@ function renderDesktop(){
       applyShellPrefs(runtime.user.shellPrefs);
     }
 
-    runtime.apps=ensureFileExplorerApp(await loadDesktopState(user));
+    runtime.apps=ensureCoreUtilityApps(await loadDesktopState(user));
     if(!getInstalled()) setInstalled(runtime.apps.map(a=>a.id));
 
     applyTheme();
@@ -804,7 +813,7 @@ function renderDesktop(){
   async function refreshDesktopApps(){
     try{
       if(runtime.user){
-        runtime.apps = ensureFileExplorerApp(await loadDesktopState(runtime.user));
+        runtime.apps = ensureCoreUtilityApps(await loadDesktopState(runtime.user));
 
         // Keep installed app cache in sync with backend/default app list.
         // This prevents BIPAC installs from requiring a full page refresh.
@@ -1036,6 +1045,15 @@ function renderDesktop(){
   document.addEventListener('keydown',ev=>{
     if(ev.key === 'Escape')clearDesktopSelection();
   },true);
+
+  window.addEventListener('message',event=>{
+    if(event.origin!==location.origin)return;
+    const msg=event.data||{};
+    if(msg.type!=='LMI_OPEN_APP')return;
+    const id=String(msg.appId||msg.id||'').trim();
+    const app=(runtime.apps||[]).find(a=>a.id===id||a.key===id||String(a.name||'').toLowerCase()===id.toLowerCase());
+    if(app)LMI_WM.openWindow(app);
+  });
 
 
   document.addEventListener('DOMContentLoaded',initLogin);
