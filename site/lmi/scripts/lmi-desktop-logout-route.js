@@ -21,7 +21,9 @@
     );
   }
 
-  function logout(){
+  async function logout(){
+    try{ await window.LMI_DESKTOP?.saveCurrentIconLayout?.(); }catch{}
+    try{ await window.LMI_DESKTOP?.flushLayoutSaves?.(); }catch{}
     try{ window.LMIAmbience?.stop?.('logout'); }catch{}
     try{ sessionStorage.removeItem('LMI_ACTIVE_AMBIENCE_STATE'); }catch{}
     try{
