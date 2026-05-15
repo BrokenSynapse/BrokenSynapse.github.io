@@ -326,7 +326,7 @@
     syncParentUser();
 
     try{
-      parent.window.LMI_DESKTOP?.setShellPrefs?.(state.user.shellPrefs);
+      parent.window.LMI_DESKTOP?.previewShellPrefs?.(state.user.shellPrefs);
       parent.window.postMessage({type:'LMI_SET_WALLPAPER', wallpaper:state.user.wallpaper || state.user.wp || ''}, location.origin);
     }catch{}
 
@@ -443,6 +443,8 @@
     const p = Object.assign({}, prefs(), desktopPrefsFromUi());
     state.user.shellPrefs = p;
 
+    try{ await parent.window.LMI_DESKTOP?.saveCurrentIconLayout?.(); }catch{}
+
     applyDesktopPrefs();
 
     const shell = await relay('user.shell.save', { prefs:p });
@@ -458,8 +460,10 @@
       parent.window.sessionUser = parent.window.LMI_USER;
       parent.sessionStorage.setItem('LMI_CURRENT_USER', JSON.stringify(parent.window.LMI_USER));
       parent.localStorage.setItem('LMI_LAST_USER', JSON.stringify(parent.window.LMI_USER));
-      parent.window.LMI_DESKTOP?.setShellPrefs?.(savedPrefs);
+      parent.window.LMI_DESKTOP?.previewShellPrefs?.(savedPrefs);
       parent.window.LMI_DESKTOP?.refreshApps?.();
+      await parent.window.LMI_DESKTOP?.saveCurrentIconLayout?.();
+      await parent.window.LMI_DESKTOP?.flushLayoutSaves?.();
     }catch{}
 
     syncParentUser();

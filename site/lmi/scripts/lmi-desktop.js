@@ -40,6 +40,43 @@
 
     return Object.assign({}, byId || {}, byKey || {});
   }
+  function appForLayoutId_(id){
+    const needle=String(id||'').toLowerCase();
+    return (runtime.apps||[]).find(a =>
+      String(a.id||'').toLowerCase()===needle ||
+      String(a.key||a.k||'').toLowerCase()===needle
+    ) || {};
+  }
+  function layoutAliasesForApp_(app, fallbackId){
+    const aliases=[app.id, app.key, app.k, fallbackId]
+      .map(x=>String(x||'').trim())
+      .filter(Boolean);
+    return [...new Set(aliases)];
+  }
+  function captureCurrentIconLayoutLocal_(){
+    const layout=getLayout();
+    const positions={};
+    let count=0;
+
+    document.querySelectorAll('.desktop-icon[data-id]').forEach(el=>{
+      const fallbackId=el.dataset.id || el.dataset.app;
+      if(!fallbackId) return;
+
+      const app=appForLayoutId_(fallbackId);
+      const x=parseInt(el.style.left || el.offsetLeft || 0,10) || 0;
+      const y=parseInt(el.style.top || el.offsetTop || 0,10) || 0;
+      const patch={iconX:x,iconY:y};
+
+      layoutAliasesForApp_(app, fallbackId).forEach(id=>{
+        layout[id]=Object.assign({},layout[id]||{},patch);
+        positions[id]=Object.assign({},patch);
+      });
+      count++;
+    });
+
+    if(count) saveLayout(layout);
+    return {count,positions,layout};
+  }
   function themeVars(){
     try{
       const path = location.pathname.replace(/\/+$/,'').toLowerCase();
@@ -261,6 +298,7 @@
       runtime.desktopState.settings.shellPrefs=next;
     }
 
+    captureCurrentIconLayoutLocal_();
     applyShellPrefs(next);
     renderDesktop();
 
@@ -281,6 +319,28 @@
   }
   function saveShellPrefs(prefs){ return setShellPrefs(prefs,{persist:true}); }
   function previewShellPrefs(prefs){ return setShellPrefs(prefs,{persist:false}); }
+
+  async function saveCurrentIconLayout(opts={}){
+    const captured=captureCurrentIconLayoutLocal_();
+    if(!captured.count || opts.localOnly) return {ok:true,saved:false,localOnly:!!opts.localOnly,count:captured.count};
+
+    if(window.LMI_API?.callRelay && runtime.user){
+      const savePromise=LMI_API.callRelay('saveDesktopLayout',{positions:captured.positions},runtime.user)
+        .then(resp=>{
+          if(!resp?.ok) console.warn('saveDesktopLayout batch failed',resp);
+          else console.log('[LMI] saved current desktop icon layout',captured.count);
+          return resp;
+        })
+        .catch(e=>console.warn('saveDesktopLayout batch failed',e));
+
+      pendingLayoutSaves.add(savePromise);
+      savePromise.finally(()=>pendingLayoutSaves.delete(savePromise));
+      return savePromise;
+    }
+
+    console.warn('[LMI] saveCurrentIconLayout could not call relay',{hasApi:!!window.LMI_API?.callRelay,user:runtime.user});
+    return {ok:false,saved:false,count:captured.count};
+  }
 
   window.LMI_DESKTOP={
     getSavedWindow(id){return getLayout()[id]||null},
@@ -319,6 +379,7 @@
     },
     flushLayoutSaves,
     refreshApps:renderDesktop,
+    saveCurrentIconLayout,
     getApps(){return runtime.apps||[];},
     getShellPrefs:readShellPrefs,
     setShellPrefs:saveShellPrefs,
@@ -366,28 +427,7 @@
     return {left:0,top:46,width:window.innerWidth,height:Math.max(0,window.innerHeight-82)};
   }
   
-  async function saveDesktopLayoutRemote(){
-    try{
-      const positions = {};
-      document.querySelectorAll('.desktop-icon[data-id]').forEach(el=>{
-        const id = el.dataset.id;
-        if(!id) return;
-        positions[id] = {
-          x: parseInt(el.style.left || el.offsetLeft || 0, 10) || 0,
-          y: parseInt(el.style.top || el.offsetTop || 0, 10) || 0
-        };
-      });
-
-      // Keep local cache too, but do not depend on it.
-      localStorage.setItem('LMI_DESKTOP_LAYOUT', JSON.stringify(positions));
-
-      if(LMI_API && LMI_API.getRelayUrl && LMI_API.getRelayUrl()){
-        await LMI_API.callRelay('desktop.layout.save', { positions }, runtime.user);
-      }
-    }catch(e){
-      console.warn('desktop layout save failed', e);
-    }
-  }
+  async function saveDesktopLayoutRemote(){ return saveCurrentIconLayout(); }
 
 function renderDesktop(){
     const desk=$('desktopIcons'); if(!desk)return; desk.innerHTML='';
