@@ -4,6 +4,7 @@
   let layoutSaveTimer=null;
   let scheduledLayoutSave=null;
   let resolveScheduledLayoutSave=null;
+  let remoteLayoutSaveInFlight=Promise.resolve();
   const $=id=>document.getElementById(id);
   const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
   function setStatus(txt,cls=''){ const el=$('loginStatus'); if(el){el.textContent=txt; el.className='login-status '+cls;} }
@@ -345,14 +346,8 @@
     if(!captured.count || opts.localOnly) return {ok:true,saved:false,localOnly:!!opts.localOnly,count:captured.count};
 
     if(window.LMI_API?.callRelay && runtime.user){
-      const savePromise=LMI_API.callRelay('saveDesktopLayout',{positions:captured.positions},runtime.user)
-        .then(resp=>{
-          if(!resp?.ok) console.warn('saveDesktopLayout batch failed',resp);
-          else console.log('[LMI] saved current desktop icon layout',captured.count);
-          return resp;
-        })
-        .catch(e=>console.warn('saveDesktopLayout batch failed',e));
-
+      const savePromise=remoteLayoutSaveInFlight.then(()=>sendCurrentIconLayout_(captured));
+      remoteLayoutSaveInFlight=savePromise.catch(()=>null);
       pendingLayoutSaves.add(savePromise);
       savePromise.finally(()=>pendingLayoutSaves.delete(savePromise));
       return savePromise;
@@ -360,6 +355,15 @@
 
     console.warn('[LMI] saveCurrentIconLayout could not call relay',{hasApi:!!window.LMI_API?.callRelay,user:runtime.user});
     return {ok:false,saved:false,count:captured.count};
+  }
+  async function sendCurrentIconLayout_(captured){
+    const resp=await LMI_API.callRelay('saveDesktopLayout',{positions:captured.positions},runtime.user)
+      .catch(e=>({ok:false,error:e.message||String(e)}));
+
+    if(!resp?.ok) console.warn('saveDesktopLayout batch failed',resp);
+    else console.log('[LMI] saved current desktop icon layout',captured.count);
+
+    return resp;
   }
   function scheduleCurrentIconLayoutSave_(){
     captureCurrentIconLayoutLocal_();
