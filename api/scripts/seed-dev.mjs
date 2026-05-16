@@ -10,7 +10,7 @@ putSheet('dictApps', [
   {k:'m',id:'bodyMods',nm:'BodyMods.LMX',path:'modules/bodyMods.html',ico:'☥',desc:'Body Mods',w:980,h:700},
   {k:'h',id:'pharma',nm:'PHARMA.LMX',path:'modules/pharma.html',ico:'✚',desc:'Pharma',w:960,h:680},
   {k:'s',id:'settings',nm:'Settings',path:'modules/settings-v2.html',ico:'⚙',desc:'Settings',w:760,h:560},
-  {k:'x',id:'bipac',nm:'LMI Terminal',path:'modules/bipac.html?v=2026051601',ico:'>_',desc:'Command shell for module discovery, descriptions, install, and launch',w:980,h:680},
+  {k:'x',id:'bipac',nm:'LMI Terminal',path:'modules/bipac.html?v=2026051602',ico:'>_',desc:'Command shell for module discovery, descriptions, install, and launch',w:980,h:680},
   {k:'r',id:'convert',nm:'Convert.LMX',path:'modules/convert.html',ico:'⇄',desc:'Converter',w:760,h:560}
 ], ['k','id','nm','path','ico','desc','w','h']);
 putSheet('bank', [{lid:'l_0', bid:'ACC-BS', cid:'c_bs', t:new Date().toISOString(), typ:'opening', amt:777777, cur:'LGD', memo:'Dev seed opening balance', by:'system', blob:''}], ['lid','bid','cid','t','typ','amt','cur','memo','by','blob']);
