@@ -1,13 +1,13 @@
 [
   {
     "id": "bipac",
-    "name": "BIPAC.LMX",
-    "title": "BIPAC.LMX",
-    "description": "Program Access Catalog terminal",
-    "icon": "BP",
-    "path": "modules/bipac.html",
-    "w": 900,
-    "h": 650,
+    "name": "LMI Terminal",
+    "title": "LMI Terminal",
+    "description": "Command shell for module discovery, descriptions, install, and launch",
+    "icon": ">_",
+    "path": "modules/bipac.html?v=2026051601",
+    "w": 980,
+    "h": 680,
     "x": 40,
     "y": 70
   },

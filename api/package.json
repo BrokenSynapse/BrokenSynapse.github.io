@@ -9,6 +9,7 @@
     "export:db": "node scripts/export-db.mjs",
     "demote-admins": "node scripts/demote-admins.mjs",
     "normalize-core-assets": "node scripts/normalize-core-assets.mjs",
+    "normalize-lmi-terminal": "node scripts/normalize-lmi-terminal.mjs",
     "reset-bodymods": "node scripts/reset-bodymods.mjs",
     "inspect-desktop-layout": "node scripts/inspect-desktop-layout.mjs"
   },

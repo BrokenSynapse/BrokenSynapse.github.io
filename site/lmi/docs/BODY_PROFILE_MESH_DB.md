@@ -20,6 +20,6 @@ Deploy notes:
 3. Paste the updated `appsScript/Code.gs` into Apps Script.
 4. Set `LMI_SPREADSHEET_ID`.
 5. Deploy as Web App: execute as you, access anyone with link.
-6. Save the Web App URL in LMI Settings/BIPACK relay field.
+6. Save the Web App URL in LMI Settings / LMI Terminal relay field.
 
 The body viewer imports Three.js/GLTFLoader from unpkg, so the static site itself is still GitHub Pages compatible. If you want zero CDN dependencies later, vendor the Three.js modules locally and change the import URLs.

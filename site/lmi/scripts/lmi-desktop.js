@@ -539,28 +539,21 @@
   function ensureCoreUtilityApps(apps){
     apps = Array.isArray(apps) ? apps : [];
     const utilityApps = [{
-      id:'fileExplorer',
-      name:'FileExplorer.LMX',
-      title:'FileExplorer.LMX',
-      icon:'FE',
-      module:'modules/fileExplorer.html?v=2026051504',
-      url:'modules/fileExplorer.html?v=2026051504',
-      desc:'Profile and item asset manager'
-    },{
-      id:'qvault',
-      name:'QVault.LMX',
-      title:'QVault.LMX',
-      icon:'QV',
-      module:'modules/qvault.html?v=2026051502',
-      url:'modules/qvault.html?v=2026051502',
-      desc:'Personal inventory grid',
+      id:'bipac',
+      key:'x',
+      name:'LMI Terminal',
+      title:'LMI Terminal',
+      icon:'>_',
+      module:'modules/bipac.html?v=2026051601',
+      url:'modules/bipac.html?v=2026051601',
+      desc:'Command shell for module discovery, descriptions, install, and launch',
       w:980,
-      h:760
+      h:680
     }];
 
     utilityApps.forEach(app => {
       const idx = apps.findIndex(a => a && (a.id === app.id || a.name === app.name));
-      if(idx >= 0) apps[idx] = Object.assign({}, app, apps[idx], { id:app.id, module:app.module, url:app.url });
+      if(idx >= 0) apps[idx] = Object.assign({}, apps[idx], app, { id:app.id, module:app.module, url:app.url });
       else apps.push(app);
     });
     return apps;
@@ -568,6 +561,7 @@
 
 
   const MODULE_PATH_OVERRIDES={
+    bipac:'modules/bipac.html?v=2026051601',
     bodyMods:'modules/bodyMods.html?v=2026051507',
     dataEditor:'modules/dataEditor.html?v=2026051502',
     pharma:'modules/pharma.html?v=2026051501',
@@ -583,7 +577,7 @@
     return a.path||a.modulePath;
   }
   function normalizeApp(a){return {id:a.id||a.appId, key:a.key||a.k, hasLayout:!!a.hasLayout, name:a.name||a.nm||a.id, title:a.title||a.name||a.nm, path:modulePathForApp_(a), icon:a.icon||a.ico||'□', description:a.description||a.desc||'', w:Number(a.w||a.defaultW||900), h:Number(a.h||a.defaultH||620), x:Number(a.x||80), y:Number(a.y||70), iconX:a.iconX===undefined?undefined:Number(a.iconX), iconY:a.iconY===undefined?undefined:Number(a.iconY)} }
-  function visibleApps(){ const installed=(runtime.session?.mode==='relay')?null:getInstalled(); return runtime.apps.filter(a=>!installed||installed.includes(a.id)||['settings','bipac','fileExplorer','qvault'].includes(a.id)); }
+  function visibleApps(){ const installed=(runtime.session?.mode==='relay')?null:getInstalled(); return runtime.apps.filter(a=>a.id==='bipac'||!installed||installed.includes(a.id)); }
   function desktopBounds(){
     // Pass 10: icon dragging must be bounded by the real desktop workspace,
     // not the icon layer. The icon layer can report a bogus/child-sized
@@ -769,7 +763,7 @@ function renderDesktop(){
           hydrateLayoutFromApps_(remote);
           const byId=new Map(remote.map(a=>[a.id,a]));
           manifest.forEach(a=>{
-            if(['settings','bipac','fileExplorer','qvault'].includes(a.id) && !byId.has(a.id)) remote.push(a);
+            if(a.id === 'bipac' && !byId.has(a.id)) remote.push(a);
           });
           return remote;
         }
@@ -798,7 +792,7 @@ function renderDesktop(){
     }
 
     runtime.apps=ensureCoreUtilityApps(await loadDesktopState(user));
-    if(!getInstalled()) setInstalled(runtime.apps.map(a=>a.id));
+    if(!getInstalled()) setInstalled(['bipac']);
 
     applyTheme();
     applyShellPrefs(runtime.user?.shellPrefs || readShellPrefs());
@@ -815,9 +809,8 @@ function renderDesktop(){
       if(runtime.user){
         runtime.apps = ensureCoreUtilityApps(await loadDesktopState(runtime.user));
 
-        // Keep installed app cache in sync with backend/default app list.
-        // This prevents BIPAC installs from requiring a full page refresh.
-        setInstalled(runtime.apps.map(a => a.id));
+        // Keep the local fallback sparse; relay installs are owned by the desk sheet.
+        if(runtime.session?.mode !== 'relay') setInstalled(runtime.apps.map(a => a.id));
 
         renderDesktop();
         setStatus('Desktop apps refreshed.', 'good');

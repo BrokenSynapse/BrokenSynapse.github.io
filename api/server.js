@@ -864,9 +864,36 @@ function userFromCore_(c) {
   return attachShellPrefsToUser_(out, c);
 }
 
+const TERMINAL_APP_KEY = 'x';
+const TERMINAL_APP_ID = 'bipac';
+const TERMINAL_DESK_APPS = TERMINAL_APP_KEY;
+const TERMINAL_DESK_LAYOUT = 'x:0,18,80,70,980,680,0,0;bipac:0,18,80,70,980,680,0,0';
+
+function normalizeTerminalApp_(a = {}) {
+  const key = String(a.k || a.key || '').trim().toLowerCase();
+  const id = String(a.id || '').trim().toLowerCase();
+  if (key !== TERMINAL_APP_KEY && id !== TERMINAL_APP_ID) return a;
+  return Object.assign({}, a, {
+    k: TERMINAL_APP_KEY,
+    id: TERMINAL_APP_ID,
+    nm: 'LMI Terminal',
+    name: 'LMI Terminal',
+    path: 'modules/bipac.html?v=2026051601',
+    ico: '>_',
+    icon: '>_',
+    desc: 'Command shell for module discovery, descriptions, install, and launch',
+    description: 'Command shell for module discovery, descriptions, install, and launch',
+    w: a.w || 980,
+    h: a.h || 680
+  });
+}
+
 function appDict_() {
   const out = {};
-  rows_('dictApps').forEach(a => out[String(a.k)] = a);
+  rows_('dictApps').forEach(a => {
+    const app = normalizeTerminalApp_(a);
+    out[String(app.k)] = app;
+  });
   return out;
 }
 
@@ -1230,7 +1257,7 @@ function updateCurrentAccount(payload, user) {
   return { saved: !!changed, user: userFromCore_(fresh), raw: fresh };
 }
 
-function getModuleIndex() { return rows_('dictApps'); }
+function getModuleIndex() { return rows_('dictApps').map(normalizeTerminalApp_); }
 function saveDesktopLayout(payload, user) {
   const c = coreFromUser_(user);
   const dict = appDict_();
@@ -1240,8 +1267,8 @@ function saveDesktopLayout(payload, user) {
   if (!row) {
     row = {
       cid: c.cid,
-      apps: Object.keys(dict).join(','),
-      lay: ''
+      apps: TERMINAL_DESK_APPS,
+      lay: TERMINAL_DESK_LAYOUT
     };
     appendSafe_('desk', ['cid','apps','lay'], row);
   }
@@ -1348,12 +1375,21 @@ function toggleApp_(payload, user, install) {
   const c = coreFromUser_(user); const dict = appDict_();
   const key = Object.keys(dict).find(k => dict[k].id === payload.appId || k === payload.appId);
   if (!key) throw new Error('Unknown app: ' + payload.appId);
+  if (!install && key === TERMINAL_APP_KEY) throw new Error('LMI Terminal cannot uninstall itself.');
+  let found = false;
   updateRows_('desk', r => r.cid === c.cid, r => {
+    found = true;
     let apps = String(r.apps || '').split(',').filter(Boolean);
+    if (apps.indexOf(TERMINAL_APP_KEY) < 0) apps.unshift(TERMINAL_APP_KEY);
     if (install && apps.indexOf(key) < 0) apps.push(key);
     if (!install) apps = apps.filter(x => x !== key);
     return { apps: apps.join(',') };
   });
+  if (!found) {
+    const apps = [TERMINAL_APP_KEY];
+    if (install && key !== TERMINAL_APP_KEY) apps.push(key);
+    appendSafe_('desk', ['cid','apps','lay'], { cid: c.cid, apps: apps.join(','), lay: TERMINAL_DESK_LAYOUT });
+  }
   return { appKey: key, installed: install };
 }
 
@@ -1766,7 +1802,7 @@ function createProfile(payload, user) {
   const cid = 'c_' + tag.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24);
   const profile = generatedProfile_(seed, rng);
   append_('core', { cid, pos: '', ph: '', cn: payload.characterName || tag, pt: 'Generated', disc: 0, pnote: '', oid: cid.replace(/^c_/, ''), tag, hash, al: payload.access || 'User', th: payload.theme || 'Default', wp: '', av: '', occ: profile.occ, bid: 'ACC-' + tag.toUpperCase(), wd: tag + "'s Wallet", bal: profile.startingCents, cur: 'LGD', st: 'Active', pin: '', note: 'generated:' + seed });
-  append_('desk', { cid, apps: 'b,x,k,w,r,m,s', lay: '' });
+  append_('desk', { cid, apps: TERMINAL_DESK_APPS, lay: TERMINAL_DESK_LAYOUT });
   writeLedger_(cid, 'ACC-' + tag.toUpperCase(), 'opening', profile.startingCents, 'LGD', 'Generated profile opening balance', 'system', profile);
   return { cid, profile };
 }
@@ -2263,24 +2299,8 @@ desk_row = cur.execute("select rows_json from sheets where name='desk'").fetchon
 desk_rows = json.loads(desk_row[0]) if desk_row and desk_row[0] else []
 
 if not any(str(d.get("cid","")) == cid for d in desk_rows):
-    # Current standard app set, excluding legacy ThemeLab.
-    default_apps = "b,x,k,w,r,m,ph,s,h,p,d,fe,df,qv"
-    default_lay = (
-        "b:0,0,120,90,800,600,0,0;"
-        "x:106,0,120,90,800,600,0,0;"
-        "k:212,0,120,90,800,600,0,0;"
-        "w:106,115,120,90,800,600,0,0;"
-        "r:212,115,120,90,800,600,0,0;"
-        "m:318,0,120,90,800,600,0,0;"
-        "ph:318,115,120,90,800,600,0,0;"
-        "s:424,0,120,90,800,600,0,0;"
-        "h:424,115,120,90,800,600,0,0;"
-        "p:530,0,120,90,800,600,0,0;"
-        "d:636,0,120,90,800,600,0,0;"
-        "fe:530,115,120,90,800,600,0,0;"
-        "df:0,115,120,90,800,600,0,0;"
-        "qv:106,230,120,90,980,760,0,0"
-    )
+    default_apps = "x"
+    default_lay = "x:0,18,80,70,980,680,0,0;bipac:0,18,80,70,980,680,0,0"
 
     desk_rows.append({
         "cid": cid,
