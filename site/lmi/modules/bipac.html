@@ -9,7 +9,7 @@
 <style>
 html,body{height:100%;margin:0;background:#030006;color:var(--text);overflow:hidden}
 .terminal{height:100%;display:flex;flex-direction:column;background:linear-gradient(180deg,#050009,#000);font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace}
-.terminal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--panel2) 86%,#000);padding:10px 12px}
+.terminal-head{display:none}
 .terminal-title{font-weight:900;font-size:17px;letter-spacing:0}
 .terminal-sub{color:var(--muted);font-size:12px;margin-top:2px}
 .terminal-lamp{border:1px solid var(--line);padding:6px 9px;background:#090011;color:#fff;box-shadow:0 0 16px color-mix(in srgb,var(--accent) 35%,transparent)}
@@ -20,9 +20,9 @@ html,body{height:100%;margin:0;background:#030006;color:var(--text);overflow:hid
 .line.warn{color:#ffd280}
 .line.bad{color:#ff80aa}
 .line.dim{color:var(--muted)}
-.prompt{display:flex;align-items:center;gap:8px;border-top:1px solid color-mix(in srgb,var(--line) 65%,transparent);background:#020004;padding:8px 12px}
-.prompt span{color:#a95cff;font-weight:900;white-space:nowrap}
-#cmd{flex:1;min-width:0;border:0;outline:0;background:transparent;color:#fff;font:inherit;padding:0}
+.console-prompt{display:flex;align-items:center;gap:0;min-height:20px}
+.console-prompt span{color:var(--text);white-space:nowrap}
+#cmd{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--text);font:inherit;padding:0;margin:0;caret-color:var(--text)}
 .module-row{display:grid;grid-template-columns:100px 210px 1fr 88px;gap:10px;padding:2px 0}
 .module-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media(max-width:760px){.module-row{grid-template-columns:80px 1fr}.module-row .desc,.module-row .state{grid-column:1 / -1}.screen{font-size:12px}}
@@ -37,11 +37,12 @@ html,body{height:100%;margin:0;background:#030006;color:var(--text);overflow:hid
     </div>
     <div id="operator" class="terminal-lamp">offline</div>
   </header>
-  <section id="screen" class="screen" aria-live="polite"></section>
-  <form id="terminalPrompt" class="prompt" autocomplete="off">
-    <span id="ps1">lmi/users/operator/desktop&gt;</span>
-    <input id="cmd" spellcheck="false" autofocus>
-  </form>
+  <section id="screen" class="screen" aria-live="polite">
+    <form id="terminalPrompt" class="console-prompt" autocomplete="off">
+      <span id="ps1">lmi/users/operator/desktop&gt;</span>
+      <input id="cmd" spellcheck="false" autofocus>
+    </form>
+  </section>
 </main>
 <script>
 const LOCAL_KEY='LMI_INSTALLED_APPS';
@@ -51,8 +52,9 @@ const screenEl=document.getElementById('screen'), cmdEl=document.getElementById(
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function userSlug(){return String(ctx?.user?.tag||ctx?.user?.displayName||'operator').trim().replace(/\s+/g,'_').replace(/[^A-Za-z0-9_-]/g,'').toLowerCase()||'operator'}
 function updatePrompt(){ps1El.textContent='lmi/users/'+userSlug()+'/desktop>'}
-function print(text,cls=''){const d=document.createElement('div');d.className='line '+cls;d.textContent=String(text||'');screenEl.appendChild(d);screenEl.scrollTop=screenEl.scrollHeight}
-function printHtml(html,cls=''){const d=document.createElement('div');d.className='line '+cls;d.innerHTML=html;screenEl.appendChild(d);screenEl.scrollTop=screenEl.scrollHeight}
+function scrollBottom(){screenEl.scrollTop=screenEl.scrollHeight}
+function print(text,cls=''){const d=document.createElement('div');d.className='line '+cls;d.textContent=String(text||'');screenEl.insertBefore(d,promptEl);scrollBottom()}
+function printHtml(html,cls=''){const d=document.createElement('div');d.className='line '+cls;d.innerHTML=html;screenEl.insertBefore(d,promptEl);scrollBottom()}
 function notifyDesktop(){try{LMI.refreshApps();window.parent?.postMessage({type:'LMI_REFRESH_APPS'},location.origin)}catch(e){}}
 function openApp(id){try{window.parent?.postMessage({type:'LMI_OPEN_APP',appId:id},location.origin)}catch(e){}}
 function normalize(a){return {id:String(a.id||a.appId||'').trim(),key:String(a.k||a.key||'').trim(),name:String(a.nm||a.name||a.title||a.id||a.k||'').trim(),path:String(a.path||a.modulePath||'').trim(),icon:String(a.ico||a.icon||'>_').trim(),description:String(a.desc||a.description||'').trim(),w:a.w,h:a.h}}
@@ -66,10 +68,10 @@ function help(){print('Available commands:','ok');print('  help                 
 function listModules(onlyInstalled=false){const rows=manifest.filter(a=>!onlyInstalled||isInstalled(a));if(!rows.length){print(onlyInstalled?'No installed modules found.':'No modules found.','warn');return}rows.forEach(a=>printHtml(`<div class="module-row"><span>${esc(a.key||a.id)}</span><span>${esc(a.name)}</span><span class="desc">${esc(a.description||'No description.')}</span><span class="state">${isInstalled(a)?'installed':'available'}</span></div>`))}
 async function refreshAll(){ctx=await LMI.getContext();await loadManifest();refreshInstalled();notifyDesktop();operatorEl.textContent=(ctx.user?.displayName||ctx.user?.tag||'operator')+' / '+(ctx.user?.access||'User');updatePrompt();print('Module catalog refreshed. '+manifest.length+' modules indexed.','ok')}
 async function installModule(name,install=true){const app=matchModule(name);if(!app){print('Unknown module: '+name,'bad');return}if(!install&&terminalIds.has(app.id.toLowerCase())){print('LMI Terminal cannot uninstall itself. Nice try.','warn');return}if(install&&isInstalled(app)){print(app.name+' is already installed.','warn');return}if(!install&&!isInstalled(app)){print(app.name+' is not installed.','warn');return}try{if(ctx?.session?.mode==='relay'){await LMI.api(install?'installApp':'uninstallApp',{appId:app.id||app.key},{label:(install?'Installing ':'Removing ')+app.name});if(install)installedIds.push(app.id,app.key);else installedIds=installedIds.filter(x=>x!==app.id&&x!==app.key)}else{let ids=localInstalled();if(install)ids.push(app.id);else ids=ids.filter(x=>x!==app.id&&x!==app.key);saveLocal(ids)}notifyDesktop();print((install?'Installed ':'Removed ')+app.name+'.','ok')}catch(e){print(e.message,'bad')}}
-async function run(input){const raw=String(input||'').trim();if(!raw)return;print(ps1El.textContent+' '+raw,'cmd');const [verb,...rest]=raw.split(/\s+/);const arg=rest.join(' ');switch(verb.toLowerCase()){case 'help':case '?':help();break;case 'modules':case 'list':listModules(false);break;case 'installed':listModules(true);break;case 'describe':case 'desc':{const a=matchModule(arg);if(!a){print('Unknown module: '+arg,'bad');break}print(a.name+' ['+(a.key||a.id)+']','ok');print(a.description||'No description.');print('Path: '+(a.path||'not set'));print('State: '+(isInstalled(a)?'installed':'available'));break}case 'install':await installModule(arg,true);break;case 'uninstall':case 'remove':await installModule(arg,false);break;case 'open':{const a=matchModule(arg);if(!a){print('Unknown module: '+arg,'bad');break}if(!isInstalled(a)){print(a.name+' is not installed. Run: install '+(a.key||a.id),'warn');break}notifyDesktop();setTimeout(()=>openApp(a.id),180);print('Opening '+a.name+'.','ok');break}case 'refresh':case 'sync':await refreshAll();break;case 'whoami':print(JSON.stringify(ctx?.user||{},null,2));break;case 'clear':screenEl.innerHTML='';break;default:print('Unknown command. Type help.','bad')}}
+async function run(input){const raw=String(input||'').trim();if(!raw)return;print(ps1El.textContent+raw,'cmd');const [verb,...rest]=raw.split(/\s+/);const arg=rest.join(' ');switch(verb.toLowerCase()){case 'help':case '?':help();break;case 'modules':case 'list':listModules(false);break;case 'installed':listModules(true);break;case 'describe':case 'desc':{const a=matchModule(arg);if(!a){print('Unknown module: '+arg,'bad');break}print(a.name+' ['+(a.key||a.id)+']','ok');print(a.description||'No description.');print('Path: '+(a.path||'not set'));print('State: '+(isInstalled(a)?'installed':'available'));break}case 'install':await installModule(arg,true);break;case 'uninstall':case 'remove':await installModule(arg,false);break;case 'open':{const a=matchModule(arg);if(!a){print('Unknown module: '+arg,'bad');break}if(!isInstalled(a)){print(a.name+' is not installed. Run: install '+(a.key||a.id),'warn');break}notifyDesktop();setTimeout(()=>openApp(a.id),180);print('Opening '+a.name+'.','ok');break}case 'refresh':case 'sync':await refreshAll();break;case 'whoami':print(JSON.stringify(ctx?.user||{},null,2));break;case 'clear':screenEl.querySelectorAll('.line').forEach(x=>x.remove());break;default:print('Unknown command. Type help.','bad')}}
 promptEl.addEventListener('submit',async e=>{e.preventDefault();const v=cmdEl.value;cmdEl.value='';await run(v);cmdEl.focus()});
 document.querySelector('.terminal').addEventListener('pointerdown',()=>cmdEl.focus());
-LMI.ready('bipac',async c=>{ctx=c;await loadManifest();refreshInstalled();operatorEl.textContent=(ctx.user?.displayName||ctx.user?.tag||'operator')+' / '+(ctx.user?.access||'User');updatePrompt();print('LMI Terminal online. Type help.','ok');print('Desktop begins with this shell. Use modules, describe, install, and open to build your workspace.','dim');cmdEl.focus();});
+LMI.ready('bipac',async c=>{ctx=c;await loadManifest();refreshInstalled();operatorEl.textContent=(ctx.user?.displayName||ctx.user?.tag||'operator')+' / '+(ctx.user?.access||'User');updatePrompt();print('LMEX LMI Ver. 19.2.1.1.2212');print('© Leviathan Military Exports Ltd.');print('');cmdEl.focus();});
 </script>
 </body>
 </html>
