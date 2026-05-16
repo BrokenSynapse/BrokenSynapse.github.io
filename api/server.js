@@ -1742,7 +1742,7 @@ function dataAppend(payload, user) {
   if (allowed.indexOf(sheet) < 0) throw new Error('DataForge refused sheet: ' + sheet);
   const record = payload.record || {};
   const s = ensureSheet_(sheet, Object.keys(record).length ? Object.keys(record) : ['id','blob']);
-  const headers = s.getRange(1, 1, 1, s.getLastColumn()).getValues()[0].map(String);
+  const headers = (s.headers && s.headers.length ? s.headers : Object.keys(record)).map(String);
   headers.forEach(h => { if (!(h in record)) record[h] = ''; });
   append_(sheet, record);
   appendSafe_('audit', ['id','t','cid','action','ok','blob'], { id:'a_'+Date.now(), t:now_(), cid:(user&&user.cid)||'', action:'data.append:'+sheet, ok:1, blob:pack_({kind:payload.kind, record}) });
