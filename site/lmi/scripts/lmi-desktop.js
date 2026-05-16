@@ -551,8 +551,8 @@
       name:'QVault.LMX',
       title:'QVault.LMX',
       icon:'QV',
-      module:'modules/qvault.html?v=2026051501',
-      url:'modules/qvault.html?v=2026051501',
+      module:'modules/qvault.html?v=2026051502',
+      url:'modules/qvault.html?v=2026051502',
       desc:'Personal inventory grid',
       w:980,
       h:760
@@ -572,7 +572,7 @@
     dataEditor:'modules/dataEditor.html?v=2026051501',
     pharma:'modules/pharma.html?v=2026051501',
     pointOfSale:'modules/pointOfSale.html?v=2026051501',
-    qvault:'modules/qvault.html?v=2026051501',
+    qvault:'modules/qvault.html?v=2026051502',
     fileExplorer:'modules/fileExplorer.html?v=2026051504'
   };
   function modulePathForApp_(a){
