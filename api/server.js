@@ -874,10 +874,12 @@ const TERMINAL_DESK_APPS = TERMINAL_APP_KEY;
 const TERMINAL_DESK_LAYOUT = 'x:0,18,80,70,980,680,0,0;bipac:0,18,80,70,980,680,0,0';
 const APP_NORMALIZERS = {
   browser: {
+    k: 'r',
+    key: 'r',
     id: 'browser',
     nm: 'ATOMIKA Browser',
     name: 'ATOMIKA Browser',
-    path: 'modules/browser.html?v=2026051603',
+    path: 'modules/browser.html?v=2026051604',
     ico: '◎',
     icon: '◎',
     desc: 'Low Data Rate Quantum Entangled Transit Environment',
@@ -2079,6 +2081,88 @@ function requireAdmin(req,res,next){
 
 app.get('/api/status', (req,res)=>res.json({ok:true,name:'BrokenSynapse VM Relay',status:'online',version:'1.0.0',sheets:listSheets()}));
 app.get('/api/relay', (req,res)=>res.json({ok:true,data:{name:'BrokenSynapse VM Relay',status:'online',version:'1.0.0'}}));
+
+const ATOMIKA_BYTES_PER_SECOND = 12000; // 96 kilobits/s.
+
+function atomikaUrl_(raw) {
+  const url = new URL(String(raw || '').trim());
+  if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Unsupported quantum address protocol.');
+  return url;
+}
+
+function htmlEscape_(value) {
+  return String(value || '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+}
+
+function atomikaErrorPage_(title, detail) {
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${htmlEscape_(title)}</title><style>body{margin:0;background:#e9e9e9;color:#333;font:18px system-ui,sans-serif;display:grid;place-items:center;height:100vh}.box{max-width:560px}.icon{font-size:54px;color:#999}h1{font-size:24px;font-weight:600}</style></head><body><div class="box"><div class="icon">?</div><h1>${htmlEscape_(title)}</h1><p>${htmlEscape_(detail)}</p></div></body></html>`;
+}
+
+app.get('/api/atomika/probe', async (req, res) => {
+  try {
+    const url = atomikaUrl_(req.query.url);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const upstream = await fetch(url, {
+      method: 'GET',
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: { 'user-agent': 'ATOMIKA Browser/1.0 (96K QE Transit)' }
+    });
+    clearTimeout(timer);
+    try { await upstream.body?.cancel(); } catch {}
+    res.json({
+      ok: upstream.ok,
+      status: upstream.status,
+      statusText: upstream.statusText,
+      url: upstream.url,
+      bytesPerSecond: ATOMIKA_BYTES_PER_SECOND
+    });
+  } catch (err) {
+    res.status(200).json({
+      ok: false,
+      status: 0,
+      statusText: String(err && err.message ? err.message : err),
+      bytesPerSecond: ATOMIKA_BYTES_PER_SECOND
+    });
+  }
+});
+
+app.get('/api/atomika/fetch', async (req, res) => {
+  try {
+    const url = atomikaUrl_(req.query.url);
+    const upstream = await fetch(url, {
+      redirect: 'follow',
+      headers: { 'user-agent': 'ATOMIKA Browser/1.0 (96K QE Transit)' }
+    });
+
+    const type = upstream.headers.get('content-type') || 'text/html; charset=utf-8';
+    res.status(upstream.status);
+    res.setHeader('content-type', type);
+    res.setHeader('cache-control', 'no-store');
+    res.setHeader('x-atomika-bandwidth', '96 kilobits/s');
+
+    if (!upstream.ok || !upstream.body) {
+      res.send(atomikaErrorPage_('ATOMIKA route lost', `${upstream.status} ${upstream.statusText || 'Destination refused connection.'}`));
+      return;
+    }
+
+    const reader = upstream.body.getReader();
+    let last = Date.now();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const jitter = 0.88 + Math.random() * 0.24;
+      const wait = Math.max(0, (value.byteLength / (ATOMIKA_BYTES_PER_SECOND * jitter)) * 1000 - (Date.now() - last));
+      if (wait > 0) await new Promise(resolve => setTimeout(resolve, wait));
+      res.write(Buffer.from(value));
+      last = Date.now();
+    }
+    res.end();
+  } catch (err) {
+    res.status(502).send(atomikaErrorPage_('ATOMIKA route lost', String(err && err.message ? err.message : err)));
+  }
+});
 
 // -----------------------------------------------------------------------------
 // Settings.LMX shell preference relay action
