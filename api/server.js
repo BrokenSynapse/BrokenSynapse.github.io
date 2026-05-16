@@ -868,17 +868,30 @@ const TERMINAL_APP_KEY = 'x';
 const TERMINAL_APP_ID = 'bipac';
 const TERMINAL_DESK_APPS = TERMINAL_APP_KEY;
 const TERMINAL_DESK_LAYOUT = 'x:0,18,80,70,980,680,0,0;bipac:0,18,80,70,980,680,0,0';
+const APP_NORMALIZERS = {
+  browser: {
+    id: 'browser',
+    nm: 'ATOMIKA Browser',
+    name: 'ATOMIKA Browser',
+    path: 'modules/browser.html?v=2026051601',
+    ico: '◎',
+    icon: '◎',
+    desc: 'Low Data Rate Quantum Entangled Transit Environment',
+    description: 'Low Data Rate Quantum Entangled Transit Environment',
+    w: 1180,
+    h: 820
+  }
+};
 
-function normalizeTerminalApp_(a = {}) {
+function normalizeFirstPartyApp_(a = {}) {
   const key = String(a.k || a.key || '').trim().toLowerCase();
   const id = String(a.id || '').trim().toLowerCase();
-  if (key !== TERMINAL_APP_KEY && id !== TERMINAL_APP_ID) return a;
-  return Object.assign({}, a, {
+  if (key === TERMINAL_APP_KEY || id === TERMINAL_APP_ID) return Object.assign({}, a, {
     k: TERMINAL_APP_KEY,
     id: TERMINAL_APP_ID,
     nm: 'LMI Terminal',
     name: 'LMI Terminal',
-    path: 'modules/bipac.html?v=2026051604',
+    path: 'modules/bipac.html?v=2026051605',
     ico: '>_',
     icon: '>_',
     desc: 'Command shell for module discovery, descriptions, install, and launch',
@@ -886,12 +899,14 @@ function normalizeTerminalApp_(a = {}) {
     w: a.w || 980,
     h: a.h || 680
   });
+  if (APP_NORMALIZERS[id]) return Object.assign({}, a, APP_NORMALIZERS[id]);
+  return a;
 }
 
 function appDict_() {
   const out = {};
   rows_('dictApps').forEach(a => {
-    const app = normalizeTerminalApp_(a);
+    const app = normalizeFirstPartyApp_(a);
     out[String(app.k)] = app;
   });
   return out;
@@ -1257,7 +1272,17 @@ function updateCurrentAccount(payload, user) {
   return { saved: !!changed, user: userFromCore_(fresh), raw: fresh };
 }
 
-function getModuleIndex() { return rows_('dictApps').map(normalizeTerminalApp_); }
+function getModuleIndex() {
+  const seen = new Set();
+  const out = [];
+  rows_('dictApps').map(normalizeFirstPartyApp_).forEach(app => {
+    const key = String(app.k || app.key || app.id || '').trim().toLowerCase();
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push(app);
+  });
+  return out;
+}
 function saveDesktopLayout(payload, user) {
   const c = coreFromUser_(user);
   const dict = appDict_();

@@ -544,8 +544,8 @@
       name:'LMI Terminal',
       title:'LMI Terminal',
       icon:'>_',
-      module:'modules/bipac.html?v=2026051604',
-      url:'modules/bipac.html?v=2026051604',
+      module:'modules/bipac.html?v=2026051605',
+      url:'modules/bipac.html?v=2026051605',
       desc:'Command shell for module discovery, descriptions, install, and launch',
       w:980,
       h:680
@@ -561,7 +561,8 @@
 
 
   const MODULE_PATH_OVERRIDES={
-    bipac:'modules/bipac.html?v=2026051604',
+    bipac:'modules/bipac.html?v=2026051605',
+    browser:'modules/browser.html?v=2026051601',
     bodyMods:'modules/bodyMods.html?v=2026051507',
     dataEditor:'modules/dataEditor.html?v=2026051502',
     pharma:'modules/pharma.html?v=2026051501',
@@ -1039,12 +1040,16 @@ function renderDesktop(){
     if(ev.key === 'Escape')clearDesktopSelection();
   },true);
 
-  window.addEventListener('message',event=>{
+  window.addEventListener('message',async event=>{
     if(event.origin!==location.origin)return;
     const msg=event.data||{};
     if(msg.type!=='LMI_OPEN_APP')return;
     const id=String(msg.appId||msg.id||'').trim();
-    const app=(runtime.apps||[]).find(a=>a.id===id||a.key===id||String(a.name||'').toLowerCase()===id.toLowerCase());
+    let app=(runtime.apps||[]).find(a=>a.id===id||a.key===id||String(a.name||'').toLowerCase()===id.toLowerCase());
+    if(!app && runtime.user){
+      await refreshDesktopApps();
+      app=(runtime.apps||[]).find(a=>a.id===id||a.key===id||String(a.name||'').toLowerCase()===id.toLowerCase());
+    }
     if(app)LMI_WM.openWindow(app);
   });
 
