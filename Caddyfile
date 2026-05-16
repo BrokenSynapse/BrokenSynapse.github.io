@@ -4,5 +4,9 @@
     }
 
     root * /srv/site
+
+    @lmiCode path /lmi/*.html /lmi/desktop/*.html /lmi/modules/*.html /lmi/scripts/*.js /lmi/module-manifest.json
+    header @lmiCode Cache-Control "no-store, max-age=0"
+
     file_server
 }

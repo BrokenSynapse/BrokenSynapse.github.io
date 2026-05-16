@@ -913,9 +913,22 @@ function appDict_() {
   const out = {};
   rows_('dictApps').forEach(a => {
     const app = normalizeFirstPartyApp_(a);
-    out[String(app.k)] = app;
+    const key = String(app.k || app.key || app.id || '').trim();
+    const id = String(app.id || '').trim();
+    if (key) out[key] = app;
+    if (id) out[id] = app;
   });
   return out;
+}
+
+function canonicalAppKey_(dict, value) {
+  const needle = String(value || '').trim().toLowerCase();
+  if (!needle) return '';
+  const hit = Object.values(dict).find(app =>
+    String(app.k || app.key || '').trim().toLowerCase() === needle ||
+    String(app.id || '').trim().toLowerCase() === needle
+  );
+  return hit ? String(hit.k || hit.key || hit.id || '').trim() : '';
 }
 
 function n_(v, fallback = 0) {
@@ -992,7 +1005,11 @@ function getDesktopState(payload, user) {
   const c = payload && payload.tag ? getCoreByLogin_(payload.tag, payload.hash) : coreFromUser_(user);
   const desk = rows_('desk').find(d => sameCid_(d.cid, c.cid)) || { apps: '', lay: '' };
   const dict = appDict_(); const layout = decodeLayout_(desk.lay);
-  const apps = String(desk.apps || '').split(',').filter(Boolean).map(k => {
+  const seenApps = new Set();
+  const apps = String(desk.apps || '').split(',').filter(Boolean).map(rawKey => {
+    const k = canonicalAppKey_(dict, rawKey);
+    if (!k || seenApps.has(k)) return null;
+    seenApps.add(k);
     const a = dict[k]; if (!a) return null;
     const id = a.id || k;
     const byKey = layout[k] || {};
