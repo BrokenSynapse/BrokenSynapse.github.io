@@ -823,9 +823,13 @@ function login(payload) {
 function coreFromUser_(user) {
   const cid = user && user.cid;
   const tag = user && user.tag;
-  if (cid) { const row = rows_('core').find(r => r.cid === cid); if (row) return row; }
+  if (cid) { const row = rows_('core').find(r => String(r.cid || '').trim() === String(cid).trim()); if (row) return row; }
   if (tag) { const row = rows_('core').find(r => String(r.tag).toLowerCase() === String(tag).toLowerCase()); if (row) return row; }
   throw new Error('No authenticated LMI user context.');
+}
+
+function sameCid_(a, b) {
+  return String(a || '').trim() === String(b || '').trim();
 }
 
 function shellPrefsFromCore_(c) {
@@ -891,7 +895,7 @@ function normalizeFirstPartyApp_(a = {}) {
     id: TERMINAL_APP_ID,
     nm: 'LMI Terminal',
     name: 'LMI Terminal',
-    path: 'modules/bipac.html?v=2026051608',
+    path: 'modules/bipac.html?v=2026051609',
     ico: '>_',
     icon: '>_',
     desc: 'Command shell for module discovery, descriptions, install, and launch',
@@ -984,7 +988,7 @@ function encodeLayout_(layout) {
 }
 function getDesktopState(payload, user) {
   const c = payload && payload.tag ? getCoreByLogin_(payload.tag, payload.hash) : coreFromUser_(user);
-  const desk = rows_('desk').find(d => d.cid === c.cid) || { apps: '', lay: '' };
+  const desk = rows_('desk').find(d => sameCid_(d.cid, c.cid)) || { apps: '', lay: '' };
   const dict = appDict_(); const layout = decodeLayout_(desk.lay);
   const apps = String(desk.apps || '').split(',').filter(Boolean).map(k => {
     const a = dict[k]; if (!a) return null;
@@ -1018,7 +1022,7 @@ function saveUserWallpaper(payload, user) {
   const wallpaper = normalizeLmiAssetUrl_((payload && (payload.wallpaper || payload.wp || payload.url)) || '');
 
   // Store in the legacy/core user row as wp, because userFromCore_ already maps c.wp -> user.wallpaper.
-  const changed = updateRows_('core', r => r.cid === c.cid, r => ({ wp: wallpaper }));
+  const changed = updateRows_('core', r => sameCid_(r.cid, c.cid), r => ({ wp: wallpaper }));
 
   appendSafe_('audit', ['id','t','cid','action','ok','blob'], {
     id: 'a_' + Date.now(),
@@ -1287,7 +1291,7 @@ function saveDesktopLayout(payload, user) {
   const c = coreFromUser_(user);
   const dict = appDict_();
   const deskRows = rows_('desk');
-  let row = deskRows.find(d => String(d.cid) === String(c.cid));
+  let row = deskRows.find(d => sameCid_(d.cid, c.cid));
 
   if (!row) {
     row = {
@@ -1334,7 +1338,7 @@ function saveDesktopLayout(payload, user) {
     const lay = encodeLayout_(layout);
     const changed = updateRows_(
       'desk',
-      r => String(r.cid) === String(c.cid),
+      r => sameCid_(r.cid, c.cid),
       r => Object.assign(r, { lay })
     );
 
@@ -1371,7 +1375,7 @@ function saveDesktopLayout(payload, user) {
 
   const changed = updateRows_(
     'desk',
-    r => String(r.cid) === String(c.cid),
+    r => sameCid_(r.cid, c.cid),
     r => Object.assign(r, { lay })
   );
 
@@ -1403,7 +1407,7 @@ function toggleApp_(payload, user, install) {
   if (!key) throw new Error('Unknown app: ' + payload.appId);
   if (!install && key === TERMINAL_APP_KEY) throw new Error('LMI Terminal cannot uninstall itself.');
   let found = false;
-  const changed = updateRows_('desk', r => String(r.cid) === String(c.cid), r => {
+  const changed = updateRows_('desk', r => sameCid_(r.cid, c.cid), r => {
     found = true;
     let apps = String(r.apps || '').split(',').filter(Boolean);
     if (apps.indexOf(TERMINAL_APP_KEY) < 0) apps.unshift(TERMINAL_APP_KEY);

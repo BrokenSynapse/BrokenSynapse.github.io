@@ -7,7 +7,7 @@ const terminalApp = {
   k: terminalKey,
   id: 'bipac',
   nm: 'LMI Terminal',
-  path: 'modules/bipac.html?v=2026051608',
+  path: 'modules/bipac.html?v=2026051609',
   ico: '>_',
   desc: 'Command shell for module discovery, descriptions, install, and launch',
   w: 980,
