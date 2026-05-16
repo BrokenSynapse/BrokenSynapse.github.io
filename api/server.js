@@ -891,7 +891,7 @@ function normalizeFirstPartyApp_(a = {}) {
     id: TERMINAL_APP_ID,
     nm: 'LMI Terminal',
     name: 'LMI Terminal',
-    path: 'modules/bipac.html?v=2026051607',
+    path: 'modules/bipac.html?v=2026051608',
     ico: '>_',
     icon: '>_',
     desc: 'Command shell for module discovery, descriptions, install, and launch',
@@ -1398,7 +1398,8 @@ function installApp(payload, user) { return toggleApp_(payload, user, true); }
 function uninstallApp(payload, user) { return toggleApp_(payload, user, false); }
 function toggleApp_(payload, user, install) {
   const c = coreFromUser_(user); const dict = appDict_();
-  const key = Object.keys(dict).find(k => dict[k].id === payload.appId || k === payload.appId);
+  const needle = String(payload.appKey || payload.appId || payload.id || '').trim().toLowerCase();
+  const key = Object.keys(dict).find(k => String(dict[k].id || '').toLowerCase() === needle || String(k).toLowerCase() === needle);
   if (!key) throw new Error('Unknown app: ' + payload.appId);
   if (!install && key === TERMINAL_APP_KEY) throw new Error('LMI Terminal cannot uninstall itself.');
   let found = false;
