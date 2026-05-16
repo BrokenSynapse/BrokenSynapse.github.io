@@ -873,7 +873,7 @@ const APP_NORMALIZERS = {
     id: 'browser',
     nm: 'ATOMIKA Browser',
     name: 'ATOMIKA Browser',
-    path: 'modules/browser.html?v=2026051601',
+    path: 'modules/browser.html?v=2026051603',
     ico: '◎',
     icon: '◎',
     desc: 'Low Data Rate Quantum Entangled Transit Environment',
@@ -891,7 +891,7 @@ function normalizeFirstPartyApp_(a = {}) {
     id: TERMINAL_APP_ID,
     nm: 'LMI Terminal',
     name: 'LMI Terminal',
-    path: 'modules/bipac.html?v=2026051605',
+    path: 'modules/bipac.html?v=2026051607',
     ico: '>_',
     icon: '>_',
     desc: 'Command shell for module discovery, descriptions, install, and launch',
@@ -1402,7 +1402,7 @@ function toggleApp_(payload, user, install) {
   if (!key) throw new Error('Unknown app: ' + payload.appId);
   if (!install && key === TERMINAL_APP_KEY) throw new Error('LMI Terminal cannot uninstall itself.');
   let found = false;
-  updateRows_('desk', r => r.cid === c.cid, r => {
+  const changed = updateRows_('desk', r => String(r.cid) === String(c.cid), r => {
     found = true;
     let apps = String(r.apps || '').split(',').filter(Boolean);
     if (apps.indexOf(TERMINAL_APP_KEY) < 0) apps.unshift(TERMINAL_APP_KEY);
@@ -1415,7 +1415,7 @@ function toggleApp_(payload, user, install) {
     if (install && key !== TERMINAL_APP_KEY) apps.push(key);
     appendSafe_('desk', ['cid','apps','lay'], { cid: c.cid, apps: apps.join(','), lay: TERMINAL_DESK_LAYOUT });
   }
-  return { appKey: key, installed: install };
+  return { appKey: key, appId: dict[key].id || key, installed: install, changed: !!changed || !found, desktop: getDesktopState({}, user) };
 }
 
 function catalogSearch(payload) {
