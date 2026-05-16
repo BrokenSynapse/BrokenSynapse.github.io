@@ -897,7 +897,7 @@ function normalizeFirstPartyApp_(a = {}) {
     id: TERMINAL_APP_ID,
     nm: 'LMI Terminal',
     name: 'LMI Terminal',
-    path: 'modules/bipac.html?v=2026051609',
+    path: 'modules/bipac.html?v=2026051610',
     ico: '>_',
     icon: '>_',
     desc: 'Command shell for module discovery, descriptions, install, and launch',

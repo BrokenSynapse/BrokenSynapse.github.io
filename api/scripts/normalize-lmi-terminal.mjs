@@ -1,13 +1,14 @@
 import { getSheet, putSheet } from '../lib/store.js';
 
 const apply = process.argv.includes('--apply');
+const resetDesktops = process.argv.includes('--reset-desktops');
 const terminalKey = 'x';
 const terminalLayout = 'x:0,18,80,70,980,680,0,0;bipac:0,18,80,70,980,680,0,0';
 const terminalApp = {
   k: terminalKey,
   id: 'bipac',
   nm: 'LMI Terminal',
-  path: 'modules/bipac.html?v=2026051609',
+  path: 'modules/bipac.html?v=2026051610',
   ico: '>_',
   desc: 'Command shell for module discovery, descriptions, install, and launch',
   w: 980,
@@ -45,16 +46,27 @@ dict.rows.forEach(row => {
 if (!terminalFound) nextApps.unshift(terminalApp);
 
 const desk = getSheet('desk');
-const deskChanges = desk.rows.map(row => ({
+function normalizeDeskRow(row) {
+  if (resetDesktops) return Object.assign({}, row, { apps: terminalKey, lay: terminalLayout });
+
+  const apps = String(row.apps || '')
+    .split(',')
+    .map(x => String(x || '').trim())
+    .filter(Boolean)
+    .filter((x, i, arr) => arr.indexOf(x) === i);
+
+  if (!apps.includes(terminalKey)) apps.unshift(terminalKey);
+
+  const lay = String(row.lay || '').trim() || terminalLayout;
+  return Object.assign({}, row, { apps: apps.join(','), lay });
+}
+
+const nextDesk = desk.rows.map(normalizeDeskRow);
+const deskChanges = desk.rows.map((row, i) => ({
   cid: row.cid || '',
   before: { apps: row.apps || '', lay: row.lay || '' },
-  after: { apps: terminalKey, lay: terminalLayout }
+  after: { apps: nextDesk[i].apps || '', lay: nextDesk[i].lay || '' }
 })).filter(change => change.before.apps !== change.after.apps || change.before.lay !== change.after.lay);
-
-const nextDesk = desk.rows.map(row => Object.assign({}, row, {
-  apps: terminalKey,
-  lay: terminalLayout
-}));
 
 const result = {
   ok: true,
@@ -72,5 +84,5 @@ if (apply) {
 
 console.log(JSON.stringify(result, null, 2));
 console.log(apply
-  ? `Applied: normalized ${deskChanges.length} desktop row(s) to LMI Terminal only.`
-  : 'Dry run only. Re-run with --apply to write these changes.');
+  ? `Applied: normalized ${deskChanges.length} desktop row(s).${resetDesktops ? ' Reset all desktops to LMI Terminal only.' : ' Preserved installed modules.'}`
+  : 'Dry run only. Re-run with --apply to write these changes. Add --reset-desktops to wipe desktops back to Terminal only.');

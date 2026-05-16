@@ -544,8 +544,8 @@
       name:'LMI Terminal',
       title:'LMI Terminal',
       icon:'>_',
-      module:'modules/bipac.html?v=2026051609',
-      url:'modules/bipac.html?v=2026051609',
+      module:'modules/bipac.html?v=2026051610',
+      url:'modules/bipac.html?v=2026051610',
       desc:'Command shell for module discovery, descriptions, install, and launch',
       w:980,
       h:680
@@ -561,7 +561,7 @@
 
 
   const MODULE_PATH_OVERRIDES={
-    bipac:'modules/bipac.html?v=2026051609',
+    bipac:'modules/bipac.html?v=2026051610',
     browser:'modules/browser.html?v=2026051604',
     bodyMods:'modules/bodyMods.html?v=2026051507',
     dataEditor:'modules/dataEditor.html?v=2026051502',

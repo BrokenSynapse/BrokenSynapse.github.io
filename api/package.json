@@ -10,6 +10,7 @@
     "demote-admins": "node scripts/demote-admins.mjs",
     "normalize-core-assets": "node scripts/normalize-core-assets.mjs",
     "normalize-lmi-terminal": "node scripts/normalize-lmi-terminal.mjs",
+    "install-desktop-module": "node scripts/install-desktop-module.mjs",
     "reset-bodymods": "node scripts/reset-bodymods.mjs",
     "inspect-desktop-layout": "node scripts/inspect-desktop-layout.mjs"
   },

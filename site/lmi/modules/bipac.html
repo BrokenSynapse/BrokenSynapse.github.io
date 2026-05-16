@@ -80,7 +80,7 @@ async function installModule(name,install=true){
   if(install&&isInstalled(app)){print(app.name+' is already installed.','warn');return}
   if(!install&&!isInstalled(app)){print(app.name+' is not installed.','warn');return}
   try{
-    if(ctx?.session?.mode==='relay'){
+    if(window.parent&&window.parent!==window){
       const result=await askDesktop('LMI_TERMINAL_INSTALL',{appId:app.id||app.key,appKey:app.key||app.id,install});
       const returnedApps=result?.desktop?.apps||result?.data?.desktop?.apps||null;
       const returnedHasApp=Array.isArray(returnedApps)&&returnedApps.some(a=>[a.id,a.key,a.k].some(v=>String(v||'').toLowerCase()===String(app.id||app.key).toLowerCase()||String(v||'').toLowerCase()===String(app.key||app.id).toLowerCase()));
