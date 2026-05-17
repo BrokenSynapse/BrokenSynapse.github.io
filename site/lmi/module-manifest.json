@@ -5,7 +5,7 @@
     "title": "LMI Terminal",
     "description": "Command shell for module discovery, descriptions, install, and launch",
     "icon": ">_",
-    "path": "modules/bipac.html?v=2026051610",
+    "path": "modules/bipac.html?v=2026051611",
     "w": 980,
     "h": 680,
     "x": 40,
@@ -37,6 +37,7 @@
   },
   {
     "id": "convert",
+    "key": "cv",
     "name": "Convert.LMX",
     "title": "Convert.LMX",
     "description": "Currency and unit conversion",
@@ -45,7 +46,9 @@
     "w": 760,
     "h": 560,
     "x": 300,
-    "y": 85
+    "y": 85,
+    "startOnly": true,
+    "showOnDesktop": false
   },
   {
     "id": "bank",
@@ -122,6 +125,7 @@
   },
   {
     "id": "qvault",
+    "key": "qv",
     "name": "QVault.LMX",
     "title": "QVault.LMX",
     "description": "Personal inventory grid",
@@ -134,6 +138,7 @@
   },
   {
     "id": "settings",
+    "key": "s",
     "name": "Settings.LMX",
     "title": "Settings.LMX",
     "description": "Profile, appearance, wallpaper, desktop and relay settings",
@@ -142,7 +147,24 @@
     "w": 1120,
     "h": 760,
     "x": 500,
-    "y": 150
+    "y": 150,
+    "startOnly": true,
+    "showOnDesktop": false
+  },
+  {
+    "id": "fileExplorer",
+    "key": "fe",
+    "name": "FileExplorer.LMX",
+    "title": "FileExplorer.LMX",
+    "description": "LMC jailed /assets context file manager",
+    "icon": "FE",
+    "path": "modules/fileExplorer.html?v=2026051504",
+    "w": 980,
+    "h": 700,
+    "x": 120,
+    "y": 90,
+    "startOnly": true,
+    "showOnDesktop": false
   },
   {
     "id": "dataEditor",

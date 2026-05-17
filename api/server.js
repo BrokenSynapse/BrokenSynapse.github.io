@@ -872,6 +872,47 @@ const TERMINAL_APP_KEY = 'x';
 const TERMINAL_APP_ID = 'bipac';
 const TERMINAL_DESK_APPS = TERMINAL_APP_KEY;
 const TERMINAL_DESK_LAYOUT = 'x:0,18,80,70,980,680,0,0;bipac:0,18,80,70,980,680,0,0';
+const DEFAULT_START_APP_KEYS = new Set(['cv', 'fe', 's']);
+const FIRST_PARTY_APPS = [
+  {
+    k: 'r',
+    id: 'browser',
+    nm: 'ATOMIKA Browser',
+    name: 'ATOMIKA Browser',
+    path: 'modules/browser.html?v=2026051605',
+    ico: '◎',
+    icon: '◎',
+    desc: 'Low Data Rate Quantum Entangled Transit Environment',
+    description: 'Low Data Rate Quantum Entangled Transit Environment',
+    w: 1180,
+    h: 820
+  },
+  { k: 'k', id: 'bank', nm: 'Bank.LMX', path: 'modules/bank.html', ico: '◇', desc: 'Wallet and account ledger', w: 860, h: 620 },
+  { k: 'w', id: 'work', nm: 'Work.LMX', path: 'modules/work.html', ico: '$', desc: 'Snake payout labor terminal', w: 860, h: 620 },
+  { k: 'p', id: 'pointOfSale', nm: 'POS.LMX', path: 'modules/pointOfSale.html?v=2026051501', ico: '▣', desc: 'Full point-of-sale register suite', w: 1280, h: 780 },
+  { k: 'd', id: 'dealership', nm: 'Dealership.LMX', path: 'modules/dealership.html', ico: 'V', desc: 'Vehicle catalog and sales terminal', w: 1120, h: 760 },
+  { k: 'm', id: 'bodyMods', nm: 'BodyMods.LMX', path: 'modules/bodyMods.html?v=2026051507', ico: '+', desc: 'Body Status tracker', w: 900, h: 650 },
+  { k: 'h', id: 'chat', nm: 'Chat.LMX', path: 'modules/chat.html', ico: '#', desc: 'Board messenger process', w: 850, h: 620 },
+  { k: 'ph', id: 'pharma', nm: 'Pharma.LMX', path: 'modules/pharma.html?v=2026051501', ico: 'Rx', desc: 'Public compound marketplace / clean supply registry', w: 1180, h: 800 },
+  { k: 'df', id: 'dataEditor', nm: 'DataForge.LMX', path: 'modules/dataEditor.html?v=2026051502', ico: 'DF', desc: 'Sheet entry formatter', w: 980, h: 720 },
+  { k: 'qv', id: 'qvault', nm: 'QVault.LMX', path: 'modules/qvault.html?v=2026051502', ico: 'QV', desc: 'Personal inventory grid', w: 980, h: 760 },
+  { k: 'cv', id: 'convert', nm: 'Convert.LMX', path: 'modules/convert.html', ico: '⇄', desc: 'Currency and unit conversion suite', w: 760, h: 560, startOnly: true },
+  { k: 'fe', id: 'fileExplorer', nm: 'FileExplorer.LMX', path: 'modules/fileExplorer.html?v=2026051504', ico: 'FE', desc: 'LMC jailed /assets context file manager', w: 980, h: 700, startOnly: true },
+  { k: 's', id: 'settings', nm: 'Settings.LMX', path: 'modules/settings-v2.html', ico: '⚙', desc: 'Profile, appearance, wallpaper, desktop and relay settings', w: 1120, h: 760, startOnly: true },
+  {
+    k: TERMINAL_APP_KEY,
+    id: TERMINAL_APP_ID,
+    nm: 'LMI Terminal',
+    name: 'LMI Terminal',
+    path: 'modules/bipac.html?v=2026051611',
+    ico: '>_',
+    icon: '>_',
+    desc: 'Command shell for module discovery, descriptions, install, and launch',
+    description: 'Command shell for module discovery, descriptions, install, and launch',
+    w: 980,
+    h: 680
+  }
+];
 const APP_NORMALIZERS = {
   browser: {
     k: 'r',
@@ -897,7 +938,7 @@ function normalizeFirstPartyApp_(a = {}) {
     id: TERMINAL_APP_ID,
     nm: 'LMI Terminal',
     name: 'LMI Terminal',
-    path: 'modules/bipac.html?v=2026051610',
+    path: 'modules/bipac.html?v=2026051611',
     ico: '>_',
     icon: '>_',
     desc: 'Command shell for module discovery, descriptions, install, and launch',
@@ -911,6 +952,12 @@ function normalizeFirstPartyApp_(a = {}) {
 
 function appDict_() {
   const out = {};
+  FIRST_PARTY_APPS.map(normalizeFirstPartyApp_).forEach(app => {
+    const key = String(app.k || app.key || app.id || '').trim();
+    const id = String(app.id || '').trim();
+    if (key) out[key] = app;
+    if (id) out[id] = app;
+  });
   rows_('dictApps').forEach(a => {
     const app = normalizeFirstPartyApp_(a);
     const key = String(app.k || app.key || app.id || '').trim();
@@ -1006,7 +1053,13 @@ function getDesktopState(payload, user) {
   const desk = rows_('desk').find(d => sameCid_(d.cid, c.cid)) || { apps: '', lay: '' };
   const dict = appDict_(); const layout = decodeLayout_(desk.lay);
   const seenApps = new Set();
-  const apps = String(desk.apps || '').split(',').filter(Boolean).map(rawKey => {
+  const explicitDesktopKeys = new Set();
+  String(desk.apps || '').split(',').filter(Boolean).forEach(rawKey => {
+    const k = canonicalAppKey_(dict, rawKey);
+    if (k) explicitDesktopKeys.add(k);
+  });
+  explicitDesktopKeys.add(TERMINAL_APP_KEY);
+  const apps = [...explicitDesktopKeys, ...DEFAULT_START_APP_KEYS].map(rawKey => {
     const k = canonicalAppKey_(dict, rawKey);
     if (!k || seenApps.has(k)) return null;
     seenApps.add(k);
@@ -1022,7 +1075,8 @@ function getDesktopState(payload, user) {
       layout[k] = Object.assign({}, l);
       layout[id] = Object.assign({}, l);
     }
-    return { key: k, id, hasLayout, name: a.nm || a.name || id, path: a.path, icon: a.ico || a.icon || '□', description: a.desc || a.description || '', min: a.min, w: n_(l.w, n_(a.w, 900)), h: n_(l.h, n_(a.h, 620)), x: n_(l.x, 80), y: n_(l.y, 70), iconX: hasLayout ? n_(l.iconX, 0) : undefined, iconY: hasLayout ? n_(l.iconY, 0) : undefined };
+    const showOnDesktop = explicitDesktopKeys.has(k);
+    return { key: k, id, hasLayout, showOnDesktop, startOnly: !showOnDesktop, name: a.nm || a.name || id, path: a.path, icon: a.ico || a.icon || '□', description: a.desc || a.description || '', min: a.min, w: n_(l.w, n_(a.w, 900)), h: n_(l.h, n_(a.h, 620)), x: n_(l.x, 80), y: n_(l.y, 70), iconX: hasLayout ? n_(l.iconX, 0) : undefined, iconY: hasLayout ? n_(l.iconY, 0) : undefined };
   }).filter(Boolean);
   return {
     user: userFromCore_(c),
@@ -1298,7 +1352,7 @@ function updateCurrentAccount(payload, user) {
 function getModuleIndex() {
   const seen = new Set();
   const out = [];
-  rows_('dictApps').map(normalizeFirstPartyApp_).forEach(app => {
+  [...FIRST_PARTY_APPS, ...rows_('dictApps')].map(normalizeFirstPartyApp_).forEach(app => {
     const key = String(app.k || app.key || app.id || '').trim().toLowerCase();
     if (!key || seen.has(key)) return;
     seen.add(key);

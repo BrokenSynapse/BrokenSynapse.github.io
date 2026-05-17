@@ -544,8 +544,8 @@
       name:'LMI Terminal',
       title:'LMI Terminal',
       icon:'>_',
-      module:'modules/bipac.html?v=2026051610',
-      url:'modules/bipac.html?v=2026051610',
+      module:'modules/bipac.html?v=2026051611',
+      url:'modules/bipac.html?v=2026051611',
       desc:'Command shell for module discovery, descriptions, install, and launch',
       w:980,
       h:680
@@ -561,7 +561,7 @@
 
 
   const MODULE_PATH_OVERRIDES={
-    bipac:'modules/bipac.html?v=2026051610',
+    bipac:'modules/bipac.html?v=2026051611',
     browser:'modules/browser.html?v=2026051605',
     bodyMods:'modules/bodyMods.html?v=2026051507',
     dataEditor:'modules/dataEditor.html?v=2026051502',
@@ -577,8 +577,9 @@
     if(MODULE_PATH_OVERRIDES[key]) return MODULE_PATH_OVERRIDES[key];
     return a.path||a.modulePath;
   }
-  function normalizeApp(a){return {id:a.id||a.appId, key:a.key||a.k, hasLayout:!!a.hasLayout, name:a.name||a.nm||a.id, title:a.title||a.name||a.nm, path:modulePathForApp_(a), icon:a.icon||a.ico||'□', description:a.description||a.desc||'', w:Number(a.w||a.defaultW||900), h:Number(a.h||a.defaultH||620), x:Number(a.x||80), y:Number(a.y||70), iconX:a.iconX===undefined?undefined:Number(a.iconX), iconY:a.iconY===undefined?undefined:Number(a.iconY)} }
+  function normalizeApp(a){return {id:a.id||a.appId, key:a.key||a.k, hasLayout:!!a.hasLayout, showOnDesktop:a.showOnDesktop!==false, startOnly:!!a.startOnly, name:a.name||a.nm||a.id, title:a.title||a.name||a.nm, path:modulePathForApp_(a), icon:a.icon||a.ico||'□', description:a.description||a.desc||'', w:Number(a.w||a.defaultW||900), h:Number(a.h||a.defaultH||620), x:Number(a.x||80), y:Number(a.y||70), iconX:a.iconX===undefined?undefined:Number(a.iconX), iconY:a.iconY===undefined?undefined:Number(a.iconY)} }
   function visibleApps(){ const installed=(runtime.session?.mode==='relay')?null:getInstalled(); return runtime.apps.filter(a=>a.id==='bipac'||!installed||installed.includes(a.id)); }
+  function desktopVisibleApps(){ return visibleApps().filter(a=>a.showOnDesktop!==false); }
   function desktopBounds(){
     // Pass 10: icon dragging must be bounded by the real desktop workspace,
     // not the icon layer. The icon layer can report a bogus/child-sized
@@ -600,7 +601,7 @@ function renderDesktop(){
     const bounds=desktopBounds();
     const cols=Math.max(1,Math.floor((bounds.width-20)/metrics.gridX));
 
-    visibleApps().forEach((app,i)=>{
+    desktopVisibleApps().forEach((app,i)=>{
       const saved=savedLayoutForApp_(layout, app);
       const defaultX=(i%cols)*metrics.gridX+metrics.originX;
       const defaultY=Math.floor(i/cols)*metrics.gridY+metrics.originY;
@@ -731,7 +732,7 @@ function renderDesktop(){
   function renderStartMenu(){
     const sm=$('startMenu'); if(!sm)return;
     const user=runtime.user||{}; const apps=visibleApps();
-    const favorites=['pharma','pointOfSale','bodyMods','dataEditor','themeLab','settings'].map(id=>apps.find(a=>a.id===id)).filter(Boolean);
+    const favorites=['bipac','convert','settings','fileExplorer'].map(id=>apps.find(a=>a.id===id)).filter(Boolean);
     sm.innerHTML=`<div class="start-profile"><div class="start-avatar">${String(user.displayName||user.tag||'U').trim().slice(0,2).toUpperCase()}</div><div><b>${user.displayName||user.tag||'Unknown Operator'}</b><em>${user.access||user.role||'User'} · ${runtime.session?.mode==='relay'?'Cloud relay':'Local session'}</em><small>${apps.length} modules installed</small></div></div><div class="start-search-wrap"><input id="startSearch" class="start-search" placeholder="Search modules / actions"></div><div class="start-section"><span>Quick launch</span></div><div id="startQuick" class="start-list"></div><div class="start-section"><span>Search results</span></div><div id="startResults" class="start-list"><div class="start-empty">Type to find a module. This menu no longer dumps every app at you.</div></div><hr><button class="start-item" data-act="home"><span class="si">⌂</span><span><b>Show Desktop</b><em>Minimize open modules</em></span></button><button class="start-item" data-act="layout"><span class="si">↺</span><span><b>Reset Saved Layout</b><em>Clear broken icon/window coordinates</em></span></button><button class="start-item" data-act="logout"><span class="si">×</span><span><b>Lock Terminal</b><em>Return to login</em></span></button>`;
     function item(app){ return `<button class="start-item" data-app="${app.id}"><span class="si">${app.icon||'□'}</span><span><b>${app.name}</b><em>${app.description||''}</em></span></button>`; }
     function wire(container){ container.querySelectorAll('[data-app]').forEach(b=>b.onclick=()=>{const app=runtime.apps.find(a=>a.id===b.dataset.app); if(app)LMI_WM.openWindow(app); sm.classList.add('hidden')}); }
