@@ -562,7 +562,7 @@
 
   const MODULE_PATH_OVERRIDES={
     bipac:'modules/bipac.html?v=2026051610',
-    browser:'modules/browser.html?v=2026051604',
+    browser:'modules/browser.html?v=2026051605',
     bodyMods:'modules/bodyMods.html?v=2026051507',
     dataEditor:'modules/dataEditor.html?v=2026051502',
     pharma:'modules/pharma.html?v=2026051501',

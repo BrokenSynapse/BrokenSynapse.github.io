@@ -879,7 +879,7 @@ const APP_NORMALIZERS = {
     id: 'browser',
     nm: 'ATOMIKA Browser',
     name: 'ATOMIKA Browser',
-    path: 'modules/browser.html?v=2026051604',
+    path: 'modules/browser.html?v=2026051605',
     ico: '◎',
     icon: '◎',
     desc: 'Low Data Rate Quantum Entangled Transit Environment',
@@ -2115,6 +2115,84 @@ function atomikaErrorPage_(title, detail) {
   return `<!doctype html><html><head><meta charset="utf-8"><title>${htmlEscape_(title)}</title><style>body{margin:0;background:#e9e9e9;color:#333;font:18px system-ui,sans-serif;display:grid;place-items:center;height:100vh}.box{max-width:560px}.icon{font-size:54px;color:#999}h1{font-size:24px;font-weight:600}</style></head><body><div class="box"><div class="icon">?</div><h1>${htmlEscape_(title)}</h1><p>${htmlEscape_(detail)}</p></div></body></html>`;
 }
 
+function atomikaProxyPath_(url) {
+  return `/api/atomika/fetch?url=${encodeURIComponent(url)}`;
+}
+
+function atomikaRewriteUrl_(raw, baseUrl) {
+  const value = String(raw || '').trim();
+  if (!value || value.startsWith('#') || /^(data|blob|mailto|tel|javascript|about):/i.test(value)) return raw;
+  try {
+    const resolved = new URL(value, baseUrl);
+    if (!['http:', 'https:'].includes(resolved.protocol)) return raw;
+    return atomikaProxyPath_(resolved.toString());
+  } catch {
+    return raw;
+  }
+}
+
+function atomikaRewriteSrcset_(raw, baseUrl) {
+  return String(raw || '').split(',').map(part => {
+    const bits = part.trim().split(/\s+/);
+    if (!bits[0]) return part;
+    bits[0] = atomikaRewriteUrl_(bits[0], baseUrl);
+    return bits.join(' ');
+  }).join(', ');
+}
+
+function atomikaRewriteCssUrls_(text, baseUrl) {
+  return String(text || '').replace(/url\((['"]?)([^'")]+)\1\)/gi, (all, quote, url) => {
+    return `url(${quote || ''}${atomikaRewriteUrl_(url, baseUrl)}${quote || ''})`;
+  });
+}
+
+function atomikaRewriteHtml_(html, baseUrl) {
+  let out = String(html || '');
+  out = out.replace(/<base\b[^>]*>/gi, '');
+  out = out.replace(/\s(src|href|poster|action|data-src|data-original|data-lazy-src)=("([^"]*)"|'([^']*)'|([^\s>]+))/gi, (all, attr, raw, dq, sq, bare) => {
+    const value = dq ?? sq ?? bare ?? '';
+    return ` ${attr}="${htmlEscape_(atomikaRewriteUrl_(value, baseUrl))}"`;
+  });
+  out = out.replace(/\s(srcset|data-srcset)=("([^"]*)"|'([^']*)'|([^\s>]+))/gi, (all, attr, raw, dq, sq, bare) => {
+    const value = dq ?? sq ?? bare ?? '';
+    return ` ${attr}="${htmlEscape_(atomikaRewriteSrcset_(value, baseUrl))}"`;
+  });
+  out = out.replace(/<style([^>]*)>([\s\S]*?)<\/style>/gi, (all, attrs, css) => {
+    return `<style${attrs}>${atomikaRewriteCssUrls_(css, baseUrl)}</style>`;
+  });
+  out = out.replace(/\sstyle=("([^"]*)"|'([^']*)')/gi, (all, raw, dq, sq) => {
+    return ` style="${htmlEscape_(atomikaRewriteCssUrls_(dq ?? sq ?? '', baseUrl))}"`;
+  });
+  return out;
+}
+
+async function atomikaStreamBuffer_(res, buffer, bytesPerSecond = ATOMIKA_BYTES_PER_SECOND) {
+  const chunkSize = 1024;
+  for (let i = 0; i < buffer.length; i += chunkSize) {
+    const chunk = buffer.subarray(i, Math.min(buffer.length, i + chunkSize));
+    const jitter = 0.86 + Math.random() * 0.28;
+    await new Promise(resolve => setTimeout(resolve, Math.max(8, (chunk.length / (bytesPerSecond * jitter)) * 1000)));
+    res.write(chunk);
+  }
+  res.end();
+}
+
+async function atomikaStreamReader_(res, reader, bytesPerSecond = ATOMIKA_BYTES_PER_SECOND) {
+  const chunkSize = 1024;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const buffer = Buffer.from(value);
+    for (let i = 0; i < buffer.length; i += chunkSize) {
+      const chunk = buffer.subarray(i, Math.min(buffer.length, i + chunkSize));
+      const jitter = 0.86 + Math.random() * 0.28;
+      await new Promise(resolve => setTimeout(resolve, Math.max(8, (chunk.length / (bytesPerSecond * jitter)) * 1000)));
+      res.write(chunk);
+    }
+  }
+  res.end();
+}
+
 app.get('/api/atomika/probe', async (req, res) => {
   try {
     const url = atomikaUrl_(req.query.url);
@@ -2154,28 +2232,31 @@ app.get('/api/atomika/fetch', async (req, res) => {
     });
 
     const type = upstream.headers.get('content-type') || 'text/html; charset=utf-8';
+    const lowerType = type.toLowerCase();
     res.status(upstream.status);
     res.setHeader('content-type', type);
     res.setHeader('cache-control', 'no-store');
     res.setHeader('x-atomika-bandwidth', '96 kilobits/s');
+    res.setHeader('x-atomika-origin', upstream.url);
 
     if (!upstream.ok || !upstream.body) {
       res.send(atomikaErrorPage_('ATOMIKA route lost', `${upstream.status} ${upstream.statusText || 'Destination refused connection.'}`));
       return;
     }
 
-    const reader = upstream.body.getReader();
-    let last = Date.now();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const jitter = 0.88 + Math.random() * 0.24;
-      const wait = Math.max(0, (value.byteLength / (ATOMIKA_BYTES_PER_SECOND * jitter)) * 1000 - (Date.now() - last));
-      if (wait > 0) await new Promise(resolve => setTimeout(resolve, wait));
-      res.write(Buffer.from(value));
-      last = Date.now();
+    if (lowerType.includes('text/html') || lowerType.includes('application/xhtml')) {
+      const body = Buffer.from(await upstream.arrayBuffer()).toString('utf8');
+      await atomikaStreamBuffer_(res, Buffer.from(atomikaRewriteHtml_(body, upstream.url), 'utf8'));
+      return;
     }
-    res.end();
+
+    if (lowerType.includes('text/css')) {
+      const body = Buffer.from(await upstream.arrayBuffer()).toString('utf8');
+      await atomikaStreamBuffer_(res, Buffer.from(atomikaRewriteCssUrls_(body, upstream.url), 'utf8'));
+      return;
+    }
+
+    await atomikaStreamReader_(res, upstream.body.getReader());
   } catch (err) {
     res.status(502).send(atomikaErrorPage_('ATOMIKA route lost', String(err && err.message ? err.message : err)));
   }

@@ -2,7 +2,7 @@ import { putSheet } from '../lib/store.js';
 putSheet('core', [{cid:'c_bs', tag:'bs', hash:'bs', cn:'BrokenSynapse', al:'Admin', th:'Default', bid:'ACC-BS', cur:'LGD', st:'Active'}], ['cid','tag','hash','cn','al','th','bid','cur','st']);
 putSheet('desk', [{cid:'c_bs', apps:'x', lay:'x:0,18,80,70,980,680,0,0;bipac:0,18,80,70,980,680,0,0'}], ['cid','apps','lay']);
 putSheet('dictApps', [
-  {k:'r',id:'browser',nm:'ATOMIKA Browser',path:'modules/browser.html?v=2026051604',ico:'◎',desc:'Low Data Rate Quantum Entangled Transit Environment',w:1180,h:820},
+  {k:'r',id:'browser',nm:'ATOMIKA Browser',path:'modules/browser.html?v=2026051605',ico:'◎',desc:'Low Data Rate Quantum Entangled Transit Environment',w:1180,h:820},
   {k:'k',id:'bank',nm:'Bank.LMX',path:'modules/bank.html',ico:'₿',desc:'Bank',w:860,h:620},
   {k:'w',id:'work',nm:'Work.LMX',path:'modules/work.html',ico:'◈',desc:'Work',w:860,h:620},
   {k:'p',id:'pos',nm:'POS.LMX',path:'modules/pointOfSale.html',ico:'▣',desc:'Point of Sale',w:960,h:680},
