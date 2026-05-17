@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AXξOM.LMX</title>
+<link rel="stylesheet" href="../scripts/lmi-theme.css">
+<script src="../scripts/lmi-module-sdk.js"></script>
+<style>
+*{box-sizing:border-box}body{overflow:hidden}.axeom{height:100vh;display:grid;grid-template-rows:auto 1fr;background:radial-gradient(circle at 68% 12%,rgba(136,255,189,.11),transparent 30%),linear-gradient(180deg,#08020b,#010104);color:var(--text)}
+.head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid var(--line);background:rgba(5,2,8,.94)}.head h1{margin:0;font-size:22px;letter-spacing:.16em}.head small{color:var(--muted)}
+.layout{min-height:0;display:grid;grid-template-columns:300px minmax(440px,1fr) 390px;gap:10px;padding:10px}.panel{min-height:0;border:1px solid var(--line2);background:rgba(6,3,10,.9);box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden}.panel h2{margin:0;padding:10px 12px;border-bottom:1px solid var(--line2);letter-spacing:.1em}.scroll{min-height:0;overflow:auto;padding:10px}
+.node-bank{display:grid;gap:7px}.group-title{margin:12px 0 6px;color:#e8ddff;text-transform:uppercase;font-size:11px;letter-spacing:.13em}.node-card{border:1px solid rgba(141,84,255,.45);background:#07030d;padding:8px;display:grid;grid-template-columns:36px 1fr;gap:8px;align-items:center;text-align:left;color:#fff}.node-card:hover{border-color:var(--accent);box-shadow:0 0 12px rgba(164,92,255,.35)}.node-sigil{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);display:grid;place-items:center;background:radial-gradient(circle,#2b1145,#08020b);font-weight:900;color:#fff;text-shadow:0 0 8px #fff}.node-card b{display:block}.node-card small{color:var(--muted);line-height:1.25}
+.canvas-wrap{position:relative;min-height:0;flex:1;background:radial-gradient(circle at center,rgba(164,92,255,.08),transparent 58%),#030106;overflow:hidden}.chart{position:absolute;inset:0}.link{stroke:rgba(136,255,189,.75);stroke-width:2.5;stroke-linecap:round;filter:drop-shadow(0 0 6px rgba(136,255,189,.45))}.link:nth-child(odd){stroke:rgba(164,92,255,.75)}.dot{position:absolute;width:52px;height:52px;margin:-26px 0 0 -26px;border-radius:50%;border:1px solid var(--line);background:radial-gradient(circle at 35% 28%,#fff,rgba(164,92,255,.75) 18%,#13051f 58%,#020104);display:grid;place-items:center;font-weight:900;cursor:pointer;box-shadow:0 0 16px rgba(164,92,255,.35)}.dot.active{border-color:var(--good);box-shadow:0 0 20px rgba(136,255,189,.85)}.dot .num{position:absolute;right:-7px;top:-8px;background:#020104;border:1px solid var(--good);color:var(--good);font-size:11px;min-width:20px;height:20px;display:grid;place-items:center}.dot small{position:absolute;top:54px;left:50%;transform:translateX(-50%);white-space:nowrap;color:#d8caff;font-size:10px;text-shadow:0 1px 4px #000}
+.sequence{border-top:1px solid var(--line2);padding:8px 10px;background:#050209;min-height:72px}.chips{display:flex;gap:6px;flex-wrap:wrap}.chip{border:1px solid var(--line2);background:#090510;padding:4px 7px;color:#fff;font-size:12px}.chip b{color:var(--good)}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:8px}.field{margin:0}.field label{font-size:10px}.readout{border:1px solid rgba(141,84,255,.45);background:#050209;padding:10px;margin-bottom:10px}.readout h3{margin:.1rem 0 .45rem}.big{font-size:28px;font-weight:900;color:var(--good);text-shadow:0 0 16px rgba(136,255,189,.5)}.formula{font-size:12px;color:#e9ddff;line-height:1.45}.mono{white-space:pre-wrap}.risk-low{color:var(--good)}.risk-mid{color:var(--warn)}.risk-high{color:var(--bad)}
+.actions{display:flex;gap:8px;flex-wrap:wrap;padding:10px;border-top:1px solid var(--line2)}@media(max-width:1080px){body{overflow:auto}.axeom{height:auto}.layout{grid-template-columns:1fr}.panel{min-height:360px}.canvas-wrap{height:560px}}
+</style>
+</head>
+<body>
+<main class="axeom">
+  <header class="head">
+    <div><h1>AXξOM.LMX</h1><small>ordered sigil spellcraft / MMEMS eteph estimator</small></div>
+    <div class="row"><button id="clearBtn" class="btn secondary">Clear Links</button><button id="exampleBtn" class="btn">Example Cast</button></div>
+  </header>
+  <section class="layout">
+    <aside class="panel"><h2>Axiom Dots</h2><div id="bank" class="scroll node-bank"></div></aside>
+    <section class="panel"><h2>Link Matrix</h2><div id="canvas" class="canvas-wrap"><svg id="links" class="chart"></svg></div><div class="sequence"><div class="chips" id="sequence"></div></div></section>
+    <aside class="panel"><h2>Spell Readout</h2><div class="scroll">
+      <div class="readout"><h3 id="spellName">Unformed axiom</h3><div id="effectText" class="formula">Connect an operation dot, then add target, vector, medium, stabilizer, and limit dots. Sequence position weights the final formula.</div></div>
+      <div class="fields">
+        <p class="field"><label>Mass kg</label><input id="massKg" type="number" step="0.1" value="1"></p>
+        <p class="field"><label>Mass g</label><input id="massG" type="number" step="1" value="100"></p>
+        <p class="field"><label>Velocity m/s</label><input id="velocity" type="number" step="1" value="30"></p>
+        <p class="field"><label>Height / distance m</label><input id="heightM" type="number" step="0.1" value="3"></p>
+        <p class="field"><label>Area m2</label><input id="areaM2" type="number" step="0.01" value="1"></p>
+        <p class="field"><label>Volume m3</label><input id="volumeM3" type="number" step="0.1" value="10"></p>
+        <p class="field"><label>Pressure Pa</label><input id="pressurePa" type="number" step="1000" value="500000"></p>
+        <p class="field"><label>Compression m</label><input id="compressionM" type="number" step="0.01" value="0.05"></p>
+        <p class="field"><label>Delta T C</label><input id="deltaT" type="number" step="1" value="50"></p>
+        <p class="field"><label>Specific heat</label><input id="specificHeat" type="number" step="1" value="4186"></p>
+        <p class="field"><label>Duration s</label><input id="durationS" type="number" step="0.1" value="5"></p>
+        <p class="field"><label>Cast time s</label><input id="castTimeS" type="number" step="0.1" value="3"></p>
+        <p class="field"><label>Reserve ξs</label><input id="reserveXis" type="number" step="1000" value="75000"></p>
+        <p class="field"><label>Max output ξ</label><input id="maxOutputXi" type="number" step="100" value="10000"></p>
+        <p class="field"><label>Efficiency η</label><input id="efficiency" type="number" min="0.05" max="1" step="0.01" value="0.75"></p>
+        <p class="field"><label>Incoming J / spell ξs</label><input id="incoming" type="number" step="100" value="5000"></p>
+      </div>
+      <div class="readout"><h3>Cost</h3><div id="costBig" class="big">0 ξs</div><div id="formula" class="formula"></div></div>
+      <div class="readout"><h3>Reserve / Burn</h3><div id="burn" class="formula"></div></div>
+      <div class="readout"><h3>Failure Model</h3><div id="risk" class="formula"></div></div>
+      <div class="readout"><h3>Notation</h3><div id="notation" class="mono">OPERATION : target / medium / vector / stabilizer</div></div>
+    </div><div class="actions"><button id="copyBtn" class="btn good">Copy Spell Report</button><button id="saveBtn" class="btn secondary">Save Local</button><button id="loadBtn" class="btn secondary">Load Last</button></div></aside>
+  </section>
+</main>
+<script>
+(function(){
+const $=id=>document.getElementById(id),TAU=Math.PI*2,STORAGE='LMI_AXEOM_LAST_SPELL';
+const ops={
+  move:{base:'0.05 * massKg * velocity^2',calc:v=>0.05*v.massKg*v.velocity**2,verb:'accelerates',note:'existing matter through a kinetic vector'},
+  lift:{base:'0.981 * massKg * heightM',calc:v=>0.981*v.massKg*v.heightM,verb:'raises',note:'existing mass against local gravity'},
+  heat:{base:'massKg * specificHeat * deltaT / 10',calc:v=>v.massKg*v.specificHeat*Math.abs(v.deltaT)/10,verb:'heats',note:'thermal state through coupled matter'},
+  cool:{base:'massKg * specificHeat * deltaT / 10',calc:v=>v.massKg*v.specificHeat*Math.abs(v.deltaT)/10,verb:'cools',note:'thermal energy away from coupled matter'},
+  form:{base:'11124 * massG',calc:v=>11124*v.massG,verb:'forms',note:'matter from raw eteph conversion'},
+  crush:{base:'pressurePa * areaM2 * compressionM / 10',calc:v=>v.pressurePa*v.areaM2*v.compressionM/10,verb:'compresses',note:'localized pressure into a target volume'},
+  shield:{base:'incomingJ / 10',calc:v=>v.incoming/10,verb:'intercepts',note:'incoming energy with a barrier surface'},
+  heal:{base:'massG * 11124 * BioC 2 * PatternC 1 * S 2',calc:v=>v.massG*11124*4,verb:'repairs',note:'living tissue using biological pattern correction'},
+  scan:{base:'volumeM3 * durationS',calc:v=>v.volumeM3*v.durationS,verb:'scans',note:'a volume for structured information'},
+  blink:{base:'massKg * 1000 * Dblink 2 * S 1.5',calc:v=>v.massKg*1000*2*1.5,verb:'blinks',note:'a body through short folded space'},
+  gate:{base:'100000 * areaM2 * D 10 * C 3 * S 2 * Anchor 2',calc:v=>100000*v.areaM2*10*3*2*2,verb:'opens',note:'a held spatial connection'},
+  transmute:{base:'massG * 11124 * Difference 10 * Precision 2 * Stability 2',calc:v=>v.massG*11124*40,verb:'rewrites',note:'matter into a different material pattern'},
+  summon:{base:'massKg * 1000 * D 2 * L 1 * C 1 * S 1 * Resistance 1',calc:v=>v.massKg*1000*2,verb:'pulls',note:'an existing object through a location lock'},
+  illusion:{base:'10 * areaM2 * durationS * Detail 5 * Interaction 2 * Observer 1',calc:v=>10*v.areaM2*v.durationS*10,verb:'projects',note:'reactive sensory information'},
+  lightning:{base:'VIt proxy: incomingJ / 10',calc:v=>v.incoming/10,verb:'discharges',note:'stored electrical potential through a path lock'},
+  plasma:{base:'massKg * 5,000,000 / 10',calc:v=>v.massKg*5000000/10,verb:'ionizes',note:'matter into weak plasma'},
+  counter:{base:'incomingSpellξs * Read 1 * Opposition 1 * Timing 1',calc:v=>v.incoming,verb:'opposes',note:'an incoming spell structure'}
+};
+const groups=[
+  ['Operations',
+    ['move','MOVE','kinetic motion','op',{op:'move'}],['lift','LIFT','raise against gravity','op',{op:'lift'}],['heat','HEAT','thermal increase','op',{op:'heat'}],['cool','COOL','thermal drain','op',{op:'cool'}],['form','FORM','matter instantiation','op',{op:'form'}],['crush','CRUSH','pressure / compression','op',{op:'crush'}],['shield','SHIELD','absorbed energy barrier','op',{op:'shield'}],['heal','HEAL','biological reconstruction','op',{op:'heal'}],['scan','SCAN','structured sensing','op',{op:'scan'}],['blink','BLINK','short teleport','op',{op:'blink'}],['gate','GATE','portal opening','op',{op:'gate'}],['transmute','TRANS','material rewrite','op',{op:'transmute'}],['summon','SUMMON','remote pull','op',{op:'summon'}],['illusion','ILLUS','sensory projection','op',{op:'illusion'}],['lightning','ARC','electrical discharge','op',{op:'lightning'}],['plasma','PLAS','ionized matter','op',{op:'plasma'}],['counter','NULL','counterspell','op',{op:'counter'}]
+  ],
+  ['Targets',
+    ['self','SELF','caster anchored target','target',{M:.8,C:1.1,S:1.2,tag:'caster'}],['body','BODY','living body target','target',{M:1.5,C:2.2,S:1.7,tag:'living body'}],['object','OBJ','discrete object','target',{M:1.1,C:1.1,S:1,tag:'object'}],['area','AREA','field or surface','target',{M:1.8,C:1.5,S:1.2,tag:'area'}],['organ','ORGAN','internal anatomy','target',{M:1.2,A:2.7,C:3.2,S:2.4,tag:'organ'}],['crowd','CROWD','multiple targets','target',{M:2.8,A:1.6,C:2.5,S:1.8,tag:'group'}]
+  ],
+  ['Medium / Vector',
+    ['air','AIR','air / open medium','medium',{M:.9,C:1,tag:'air'}],['water','WATER','fluid coupling','medium',{M:1.3,C:1.4,S:1.2,tag:'water'}],['metal','METAL','conductive material','medium',{M:1.2,C:1.2,tag:'metal'}],['flesh','FLESH','biological coupling','medium',{M:1.6,C:2.4,S:1.8,tag:'flesh'}],['direct','DIRECT','line vector','vector',{R:1,A:1.1,tag:'direct vector'}],['arc','ARC','curved/pathfinding vector','vector',{R:1.4,A:1.6,C:1.5,tag:'pathfinding vector'}],['inward','IN','inward vector','vector',{A:1.4,C:1.2,tag:'inward vector'}],['wide','WIDE','wide dispersion','vector',{M:1.9,A:.8,C:1.4,tag:'wide dispersion'}]
+  ],
+  ['Stabilizers / Limits',
+    ['precise','PREC','precision lock','stabilizer',{A:1.9,C:1.3,S:1.1,tag:'precision lock'}],['safe','SAFE','safety limiter','stabilizer',{S:2,C:1.2,tag:'safety limiter'}],['fast','FAST','rapid cast','limit',{T:.75,C:1.4,S:1.3,eta:-.08,tag:'rapid cast'}],['sustain','SUST','extended duration','limit',{T:1.8,S:1.4,tag:'duration sustain'}],['anchor','ANCH','causality anchor','stabilizer',{C:1.5,S:2.4,tag:'causality anchor'}],['dirty','DIRTY','crude conversion','limit',{A:.75,C:.75,S:.7,eta:.08,tag:'crude limiter'}],['warded','WARD','resistance override','stabilizer',{R:1.4,A:1.5,C:2.2,S:1.8,tag:'ward override'}],['quiet','QUIET','low signature','limit',{C:1.8,S:1.3,eta:-.05,tag:'low signature'}]
+  ]
+];
+const nodes=groups.flatMap(([group,...items])=>items.map(x=>({group,id:x[0],label:x[1],name:x[2],kind:x[3],mods:x[4]})));
+let seq=[];const positions={};
+function esc(v){return String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]))}
+function values(){const ids=['massKg','massG','velocity','heightM','areaM2','volumeM3','pressurePa','compressionM','deltaT','specificHeat','durationS','castTimeS','reserveXis','maxOutputXi','efficiency','incoming'];return Object.fromEntries(ids.map(id=>[id,Math.max(id==='efficiency'?0.05:0,Number($(id).value)||0)]));}
+function fmt(x,unit='ξs'){x=Number(x)||0;const p=[['T',1e12],['G',1e9],['M',1e6],['k',1e3],['',1]];const hit=p.find(([,m])=>Math.abs(x)>=m)||p[p.length-1];return (x/hit[1]).toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3})+' '+hit[0]+unit}
+function weight(i){return 1+(Math.max(0,seq.length-1-i)*0.08)}
+function selectedOp(){return seq.find(n=>n.kind==='op')?.mods.op||'move'}
+function weightedMods(){const out={M:1,R:1,A:1,T:1,C:1,S:1,eta:Number($('efficiency').value)||.75,tags:{target:[],medium:[],vector:[],stabilizer:[],limit:[]}};seq.forEach((n,i)=>{if(n.kind==='op')return;const w=weight(i);['M','R','A','T','C','S'].forEach(k=>{if(n.mods[k]!==undefined)out[k]*=1+(n.mods[k]-1)*w});if(n.mods.eta)out.eta=Math.max(.05,Math.min(1,out.eta+n.mods.eta));if(n.mods.tag&&out.tags[n.kind])out.tags[n.kind].push(n.mods.tag)});return out}
+function calculate(){const v=values(),op=ops[selectedOp()]||ops.move,mods=weightedMods(),base=Math.max(0,op.calc(v)),cost=(base*mods.M*mods.R*mods.A*mods.T*mods.C*mods.S)/Math.max(.05,mods.eta),required=cost/Math.max(.1,v.castTimeS),minCast=cost/Math.max(1,v.maxOutputXi),spent=v.reserveXis?cost/v.reserveXis*100:0,remaining=Math.max(0,v.reserveXis-cost),over=required>v.maxOutputXi,instability=Math.max(0,mods.C*mods.S/mods.eta-1),risk=Math.min(.95,(over?.22:0)+instability*.045+Math.max(0,seq.length-5)*.025),backlash=cost*risk*(mods.S<1?1.8:.75);return{v,op,mods,base,cost,required,minCast,spent,remaining,risk,backlash}}
+function renderBank(){const bank=$('bank');let current='';bank.innerHTML='';nodes.forEach(n=>{if(n.group!==current){current=n.group;const h=document.createElement('div');h.className='group-title';h.textContent=current;bank.appendChild(h)}const b=document.createElement('button');b.className='node-card';b.innerHTML=`<span class="node-sigil">${esc(n.label)}</span><span><b>${esc(n.name)}</b><small>${esc(n.kind)}</small></span>`;b.onclick=()=>addNode(n.id);bank.appendChild(b)})}
+function addNode(id){const n=nodes.find(x=>x.id===id);if(!n)return;if(n.kind==='op'&&seq.some(x=>x.kind==='op'))seq=seq.filter(x=>x.kind!=='op');seq.push(n);render()}
+function layoutDots(){const c=$('canvas'),w=c.clientWidth||600,h=c.clientHeight||500,cx=w/2,cy=h/2,r=Math.max(150,Math.min(w,h)*.38);nodes.forEach((n,i)=>{const a=-Math.PI/2+i/nodes.length*TAU;positions[n.id]={x:cx+Math.cos(a)*r,y:cy+Math.sin(a)*r}})}
+function renderDots(){layoutDots();const c=$('canvas');c.querySelectorAll('.dot').forEach(x=>x.remove());const active=new Map(seq.map((n,i)=>[n.id,i+1]));nodes.forEach(n=>{const p=positions[n.id];const d=document.createElement('button');d.className='dot'+(active.has(n.id)?' active':'');d.style.left=p.x+'px';d.style.top=p.y+'px';d.innerHTML=`${esc(n.label)}${active.has(n.id)?`<span class="num">${active.get(n.id)}</span>`:''}<small>${esc(n.name)}</small>`;d.onclick=()=>addNode(n.id);c.appendChild(d)})}
+function renderLinks(){const svg=$('links');svg.innerHTML='';seq.forEach((n,i)=>{if(!i)return;const a=positions[seq[i-1].id],b=positions[n.id];if(!a||!b)return;const line=document.createElementNS('http://www.w3.org/2000/svg','line');line.setAttribute('class','link');line.setAttribute('x1',a.x);line.setAttribute('y1',a.y);line.setAttribute('x2',b.x);line.setAttribute('y2',b.y);svg.appendChild(line)})}
+function renderSequence(){sequence.innerHTML=seq.map((n,i)=>`<span class="chip"><b>${i+1}</b> ${esc(n.label)} ${esc(n.name)}</span>`).join('')||'<span class="chip">No axiom chain linked.</span>'}
+function tags(mods,k,fallback){return (mods.tags[k]&&mods.tags[k][0])||fallback}
+function renderReadout(){const r=calculate(),opKey=selectedOp(),opName=seq.find(n=>n.kind==='op')?.name||'unformed operation',target=tags(r.mods,'target','unspecified target'),medium=tags(r.mods,'medium','free medium'),vector=tags(r.mods,'vector','direct vector'),stab=tags(r.mods,'stabilizer',tags(r.mods,'limit','unbounded stabilizer'));spellName.textContent='AXξOM: '+opName.toUpperCase();effectText.textContent=`This spell ${r.op.verb} ${target} through ${medium}, carried by ${vector}, constrained by ${stab}. It reads as ${r.op.note}.`;costBig.textContent=fmt(r.cost);formula.innerHTML=`Base: ${esc(r.op.base)} = ${fmt(r.base)}<br>Modified: (B x M ${r.mods.M.toFixed(3)} x R ${r.mods.R.toFixed(3)} x A ${r.mods.A.toFixed(3)} x T ${r.mods.T.toFixed(3)} x C ${r.mods.C.toFixed(3)} x S ${r.mods.S.toFixed(3)}) / η ${r.mods.eta.toFixed(2)}<br>Joule equivalent: ${(r.cost*10).toLocaleString(undefined,{maximumFractionDigits:0})} J`;burn.innerHTML=`Required output: ${fmt(r.required,'ξ')} for ${r.v.castTimeS.toFixed(1)}s<br>Minimum cast time at max output: ${r.minCast.toFixed(2)}s<br>Reserve spent: ${r.spent.toFixed(2)}% (${fmt(r.remaining)} remaining)`;const cls=r.risk<.18?'risk-low':r.risk<.42?'risk-mid':'risk-high';risk.innerHTML=`<span class="${cls}">Failure risk: ${(r.risk*100).toFixed(1)}%</span><br>Estimated backlash: ${fmt(r.backlash)}<br>Backlash joules: ${(r.backlash*10).toLocaleString(undefined,{maximumFractionDigits:0})} J`;notation.textContent=`${opKey.toUpperCase()} : ${target} / ${medium} / ${vector} / ${stab}`}
+function report(){return [spellName.textContent,effectText.textContent,'Cost: '+costBig.textContent,formula.innerText,burn.innerText,risk.innerText,'Notation: '+notation.textContent,'Chain: '+seq.map((n,i)=>(i+1)+'. '+n.label+' '+n.name).join(' -> ')].join('\n')}
+function render(){renderDots();renderLinks();renderSequence();renderReadout()}
+function example(){seq=['heat','body','flesh','direct','precise','safe'].map(id=>nodes.find(n=>n.id===id));massKg.value=1;deltaT.value=55;specificHeat.value=3500;durationS.value=3;castTimeS.value=2;reserveXis.value=75000;efficiency.value=.7;render()}
+document.querySelectorAll('input').forEach(i=>i.addEventListener('input',renderReadout));clearBtn.onclick=()=>{seq=[];render()};exampleBtn.onclick=example;copyBtn.onclick=async()=>{try{await navigator.clipboard.writeText(report());copyBtn.textContent='Copied';setTimeout(()=>copyBtn.textContent='Copy Spell Report',900)}catch{alert(report())}};saveBtn.onclick=()=>{localStorage.setItem(STORAGE,JSON.stringify({seq:seq.map(n=>n.id),fields:Object.fromEntries([...document.querySelectorAll('input')].map(i=>[i.id,i.value]))}));saveBtn.textContent='Saved';setTimeout(()=>saveBtn.textContent='Save Local',900)};loadBtn.onclick=()=>{try{const s=JSON.parse(localStorage.getItem(STORAGE)||'{}');if(s.fields)Object.entries(s.fields).forEach(([k,v])=>{if($(k))$(k).value=v});seq=(s.seq||[]).map(id=>nodes.find(n=>n.id===id)).filter(Boolean);render()}catch{}};window.addEventListener('resize',render);renderBank();render();LMI.ready('axeom',()=>{});
+})();
+</script>
+</body>
+</html>

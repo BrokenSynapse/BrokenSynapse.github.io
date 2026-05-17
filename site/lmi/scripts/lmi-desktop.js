@@ -565,6 +565,8 @@
     browser:'modules/browser.html?v=2026051605',
     bodyMods:'modules/bodyMods.html?v=2026051507',
     dataEditor:'modules/dataEditor.html?v=2026051502',
+    axeom:'modules/axeom.html?v=2026051701',
+    ax:'modules/axeom.html?v=2026051701',
     pharma:'modules/pharma.html?v=2026051501',
     pointOfSale:'modules/pointOfSale.html?v=2026051501',
     qvault:'modules/qvault.html?v=2026051502',

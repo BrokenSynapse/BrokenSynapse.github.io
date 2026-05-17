@@ -137,6 +137,19 @@
     "y": 90
   },
   {
+    "id": "axeom",
+    "key": "ax",
+    "name": "AXξOM.LMX",
+    "title": "AXξOM.LMX",
+    "description": "Sequential eteph spellcraft compiler",
+    "icon": "AX",
+    "path": "modules/axeom.html?v=2026051701",
+    "w": 1180,
+    "h": 780,
+    "x": 220,
+    "y": 90
+  },
+  {
     "id": "settings",
     "key": "s",
     "name": "Settings.LMX",

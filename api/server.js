@@ -896,6 +896,7 @@ const FIRST_PARTY_APPS = [
   { k: 'ph', id: 'pharma', nm: 'Pharma.LMX', path: 'modules/pharma.html?v=2026051501', ico: 'Rx', desc: 'Public compound marketplace / clean supply registry', w: 1180, h: 800 },
   { k: 'df', id: 'dataEditor', nm: 'DataForge.LMX', path: 'modules/dataEditor.html?v=2026051502', ico: 'DF', desc: 'Sheet entry formatter', w: 980, h: 720 },
   { k: 'qv', id: 'qvault', nm: 'QVault.LMX', path: 'modules/qvault.html?v=2026051502', ico: 'QV', desc: 'Personal inventory grid', w: 980, h: 760 },
+  { k: 'ax', id: 'axeom', nm: 'AXξOM.LMX', path: 'modules/axeom.html?v=2026051701', ico: 'AX', desc: 'Sequential eteph spellcraft compiler', w: 1180, h: 780 },
   { k: 'cv', id: 'convert', nm: 'Convert.LMX', path: 'modules/convert.html', ico: '⇄', desc: 'Currency and unit conversion suite', w: 760, h: 560, startOnly: true },
   { k: 'fe', id: 'fileExplorer', nm: 'FileExplorer.LMX', path: 'modules/fileExplorer.html?v=2026051504', ico: 'FE', desc: 'LMC jailed /assets context file manager', w: 980, h: 700, startOnly: true },
   { k: 's', id: 'settings', nm: 'Settings.LMX', path: 'modules/settings-v2.html', ico: '⚙', desc: 'Profile, appearance, wallpaper, desktop and relay settings', w: 1120, h: 760, startOnly: true },
