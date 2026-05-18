@@ -12,7 +12,7 @@ putSheet('dictApps', [
   {k:'s',id:'settings',nm:'Settings',path:'modules/settings-v2.html',ico:'⚙',desc:'Settings',w:760,h:560},
   {k:'x',id:'bipac',nm:'LMI Terminal',path:'modules/bipac.html?v=2026051611',ico:'>_',desc:'Command shell for module discovery, descriptions, install, and launch',w:980,h:680},
   {k:'cv',id:'convert',nm:'Convert.LMX',path:'modules/convert.html',ico:'⇄',desc:'Converter',w:760,h:560},
-  {k:'ax',id:'axeom',nm:'AXξOM.LMX',path:'modules/axeom.html?v=2026051701',ico:'AX',desc:'Sequential eteph spellcraft compiler',w:1180,h:780}
+  {k:'ax',id:'axeom',nm:'AXξOM.LMX',path:'modules/axeom.html?v=2026051702',ico:'AX',desc:'Sequential eteph spellcraft compiler',w:1180,h:780}
 ], ['k','id','nm','path','ico','desc','w','h']);
 putSheet('bank', [{lid:'l_0', bid:'ACC-BS', cid:'c_bs', t:new Date().toISOString(), typ:'opening', amt:777777, cur:'LGD', memo:'Dev seed opening balance', by:'system', blob:''}], ['lid','bid','cid','t','typ','amt','cur','memo','by','blob']);
 putSheet('currencySettings', [
