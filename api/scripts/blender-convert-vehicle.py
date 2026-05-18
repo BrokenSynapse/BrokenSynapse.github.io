@@ -8,11 +8,12 @@ import bpy
 COLOR_HEX_RE = re.compile(r"0x([0-9a-fA-F]{8})")
 
 
-def find_dae(root):
+def find_model_files(root):
     matches = []
     for base, _dirs, files in os.walk(root):
         for name in files:
-            if name.lower().endswith(".dae"):
+            ext = os.path.splitext(name.lower())[1]
+            if ext in {".dae", ".fbx", ".obj"}:
                 matches.append(os.path.join(base, name))
     matches.sort(key=lambda p: (0 if "car" in os.path.basename(p).lower() or "body" in os.path.basename(p).lower() else 1, len(p)))
     return matches
@@ -32,7 +33,14 @@ def clamp01(value):
 def rgba_from_array(value):
     if not isinstance(value, (list, tuple)) or len(value) < 3:
         return None
-    vals = [float(v) for v in value[:4]]
+    if not all(isinstance(v, (int, float, str)) for v in value[:3]):
+        return None
+    try:
+        vals = [float(v) for v in value[:4] if isinstance(v, (int, float, str))]
+    except Exception:
+        return None
+    if len(vals) < 3:
+        return None
     if any(v > 1.0 for v in vals):
         vals = [v / 255.0 for v in vals]
     while len(vals) < 4:
@@ -206,28 +214,36 @@ def main():
     except Exception as exc:
         print("Could not explicitly enable io_scene_gltf2: %s" % exc)
 
-    dae_files = find_dae(source_dir)
-    if not dae_files:
-        raise SystemExit("No .dae files found in vehicle model source.")
+    model_files = find_model_files(source_dir)
+    if not model_files:
+        raise SystemExit("No .dae, .fbx, or .obj files found in vehicle model source. If this pack only has .kn5 files, install the KN5 converter first.")
 
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete()
 
     imported_reports = []
     before_count = len(bpy.context.scene.objects)
-    for dae in dae_files:
+    for model_file in model_files:
         before = len(bpy.context.scene.objects)
         try:
-            result = bpy.ops.wm.collada_import(filepath=dae)
+            ext = os.path.splitext(model_file.lower())[1]
+            if ext == ".dae":
+                result = bpy.ops.wm.collada_import(filepath=model_file)
+            elif ext == ".fbx":
+                result = bpy.ops.import_scene.fbx(filepath=model_file)
+            elif ext == ".obj":
+                result = bpy.ops.import_scene.obj(filepath=model_file)
+            else:
+                result = None
             after = len(bpy.context.scene.objects)
             imported_reports.append({
-                "path": os.path.relpath(dae, source_dir),
+                "path": os.path.relpath(model_file, source_dir),
                 "result": list(result) if result else [],
                 "objectsAdded": after - before
             })
         except Exception as exc:
             imported_reports.append({
-                "path": os.path.relpath(dae, source_dir),
+                "path": os.path.relpath(model_file, source_dir),
                 "error": str(exc)
             })
 
@@ -268,7 +284,7 @@ def main():
         "source": source_dir,
         "output": output,
         "outputBytes": os.path.getsize(output),
-        "daeFiles": len(dae_files),
+        "modelFiles": len(model_files),
         "objectsBeforeImport": before_count,
         "objectsAfterImport": len(bpy.context.scene.objects),
         "meshObjects": len(meshes),

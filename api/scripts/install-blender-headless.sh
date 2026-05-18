@@ -13,7 +13,7 @@ fi
 
 if command -v apt-get >/dev/null 2>&1; then
   $SUDO apt-get update
-  $SUDO apt-get install -y --no-install-recommends blender python3-numpy
+  $SUDO apt-get install -y --no-install-recommends blender python3-numpy p7zip-full
   blender --version | head -n 1
   exit 0
 fi

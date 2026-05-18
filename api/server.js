@@ -38,7 +38,7 @@ const ASSET_ALLOWED_EXT = new Set([
   '.json','.txt','.csv','.md',
   '.mp3','.wav','.ogg',
   '.mp4','.webm',
-  '.glb','.gltf','.obj','.mtl','.dae',
+  '.glb','.gltf','.obj','.mtl','.dae','.fbx','.kn5','.ai','.ini',
   '.pdf'
 ]);
 
@@ -477,38 +477,91 @@ async function runProcess_(cmd, args, opts = {}) {
   });
 }
 
-async function extractVehicleZip_(buffer, vehicleId) {
-  const entries = readZipEntries_(buffer).filter(entry => !String(entry.name || '').endsWith('/'));
-  if (entries.length > 240) throw new Error('Vehicle model zip has too many files.');
+const VEHICLE_MODEL_ALLOWED_EXT = new Set([
+  '.dae','.fbx','.obj','.mtl','.kn5',
+  '.png','.jpg','.jpeg','.webp','.tga','.bmp','.dds',
+  '.json','.txt','.ini','.csv','.ai'
+]);
 
+async function walkVehicleSource_(sourceDir) {
+  const files = [];
+  async function walk(dir) {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      const rel = path.relative(sourceDir, full).replace(/\\/g, '/');
+      if (entry.isDirectory()) {
+        await walk(full);
+        continue;
+      }
+      const ext = path.extname(entry.name).toLowerCase();
+      if (!VEHICLE_MODEL_ALLOWED_EXT.has(ext)) {
+        await fs.rm(full, { force: true });
+        continue;
+      }
+      const stat = await fs.stat(full);
+      if (stat.size > 220 * 1024 * 1024) throw new Error(`Vehicle model entry too large: ${rel}`);
+      files.push({ path: rel, size: stat.size, type: ext.replace('.', '') });
+    }
+  }
+  await walk(sourceDir);
+  return files;
+}
+
+async function extractVehicle7z_(buffer, sourceDir, archiveFile) {
+  await fs.writeFile(archiveFile, buffer);
+  const sevenZip = process.env.SEVEN_ZIP_BIN || '7z';
+  const out = await runProcess_(sevenZip, ['x', '-y', `-o${sourceDir}`, archiveFile], {
+    cwd: path.dirname(archiveFile),
+    timeout: 5 * 60 * 1000
+  });
+  if (!out.ok) {
+    throw new Error(`Vehicle .7z extract failed. Install p7zip-full/7zip or set SEVEN_ZIP_BIN. ${out.stderr || out.stdout || ''}`.slice(0, 1200));
+  }
+}
+
+async function extractVehicleZip_(buffer, vehicleId, originalName = 'source.zip') {
+  const archiveExt = path.extname(originalName || '').toLowerCase();
   const safeId = safeVehicleAssetId_(vehicleId);
   const root = assetFullPath_(`vehicles/models/${safeId}`);
   const sourceDir = path.join(root.full, 'source');
   await fs.rm(root.full, { recursive: true, force: true });
   await fs.mkdir(sourceDir, { recursive: true });
-  await fs.writeFile(path.join(root.full, 'source.zip'), buffer);
+  const archiveName = archiveExt === '.7z' ? 'source.7z' : 'source.zip';
+  const archiveFile = path.join(root.full, archiveName);
 
-  const files = [];
-  for (const entry of entries) {
-    const clean = cleanZipPath_(entry.name);
-    if (!clean) throw new Error(`Unsafe zip path: ${entry.name}`);
-    if (entry.uncompressedSize > 180 * 1024 * 1024) throw new Error(`Vehicle zip entry too large: ${clean}`);
-    const ext = path.extname(clean).toLowerCase();
-    if (!['.dae','.png','.jpg','.jpeg','.webp','.tga','.bmp','.dds','.json','.txt','.mtl','.obj'].includes(ext)) continue;
-    const data = zipEntryData_(buffer, entry);
-    const out = path.resolve(sourceDir, clean);
-    if (!out.startsWith(sourceDir + path.sep) && out !== sourceDir) throw new Error(`Unsafe zip path: ${clean}`);
-    await fs.mkdir(path.dirname(out), { recursive: true });
-    await fs.writeFile(out, data);
-    files.push({ path: clean, size: entry.uncompressedSize, type: ext.replace('.', '') });
+  let files = [];
+  if (archiveExt === '.7z') {
+    await extractVehicle7z_(buffer, sourceDir, archiveFile);
+    files = await walkVehicleSource_(sourceDir);
+  } else {
+    const entries = readZipEntries_(buffer).filter(entry => !String(entry.name || '').endsWith('/'));
+    if (entries.length > 1000) throw new Error('Vehicle model zip has too many files.');
+    await fs.writeFile(archiveFile, buffer);
+    for (const entry of entries) {
+      const clean = cleanZipPath_(entry.name);
+      if (!clean) throw new Error(`Unsafe zip path: ${entry.name}`);
+      if (entry.uncompressedSize > 220 * 1024 * 1024) throw new Error(`Vehicle zip entry too large: ${clean}`);
+      const ext = path.extname(clean).toLowerCase();
+      if (!VEHICLE_MODEL_ALLOWED_EXT.has(ext)) continue;
+      const data = zipEntryData_(buffer, entry);
+      const out = path.resolve(sourceDir, clean);
+      if (!out.startsWith(sourceDir + path.sep) && out !== sourceDir) throw new Error(`Unsafe zip path: ${clean}`);
+      await fs.mkdir(path.dirname(out), { recursive: true });
+      await fs.writeFile(out, data);
+      files.push({ path: clean, size: entry.uncompressedSize, type: ext.replace('.', '') });
+    }
   }
 
-  if (!files.some(f => f.type === 'dae')) throw new Error('Vehicle model zip must include at least one .dae file.');
+  if (!files.some(f => ['dae','fbx','obj','kn5'].includes(f.type))) {
+    throw new Error('Vehicle model pack must include at least one .dae, .fbx, .obj, or .kn5 file.');
+  }
 
   const manifest = {
     id: safeId,
     vehicleId: String(vehicleId || safeId),
-    sourceZip: assetWebPath_(`vehicles/models/${safeId}/source.zip`),
+    sourceZip: assetWebPath_(`vehicles/models/${safeId}/${archiveName}`),
     sourceDir: assetWebPath_(`vehicles/models/${safeId}/source`),
     glb: assetWebPath_(`vehicles/models/${safeId}/model.glb`),
     files,
@@ -818,7 +871,7 @@ app.post('/api/vehicles/model/upload', upload.single('file'), async (req, res) =
     }
 
     const vehicleId = req.body.vehicleId || req.body.vid || req.body.id || path.basename(req.file.originalname, '.zip');
-    const extracted = await extractVehicleZip_(req.file.buffer, vehicleId);
+    const extracted = await extractVehicleZip_(req.file.buffer, vehicleId, req.file.originalname || 'source.zip');
     const finalized = await finalizeVehicleModelConversion_(extracted.safeId, extracted.sourceDir, extracted.root.full);
     const manifest = Object.assign({}, extracted.manifest, {
       conversion: finalized.conversion,
