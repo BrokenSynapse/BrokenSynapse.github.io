@@ -863,14 +863,15 @@ app.post('/api/files/write', express.text({ type: '*/*', limit: '2mb' }), async 
 
 app.post('/api/vehicles/model/upload', upload.single('file'), async (req, res) => {
   try {
-    const admin = requireLmiAdmin_(req, res, 'Admin account required to upload vehicle model zips.');
+    const admin = requireLmiAdmin_(req, res, 'Admin account required to upload vehicle model packs.');
     if (!admin) return;
-    if (!req.file) return res.status(400).json({ ok: false, error: 'No vehicle model zip uploaded.' });
-    if (path.extname(req.file.originalname || '').toLowerCase() !== '.zip') {
-      return res.status(400).json({ ok: false, error: 'Vehicle model upload must be a .zip file.' });
+    if (!req.file) return res.status(400).json({ ok: false, error: 'No vehicle model pack uploaded.' });
+    const modelPackExt = path.extname(req.file.originalname || '').toLowerCase();
+    if (!['.zip', '.7z'].includes(modelPackExt)) {
+      return res.status(400).json({ ok: false, error: 'Vehicle model upload must be a .zip or .7z file.' });
     }
 
-    const vehicleId = req.body.vehicleId || req.body.vid || req.body.id || path.basename(req.file.originalname, '.zip');
+    const vehicleId = req.body.vehicleId || req.body.vid || req.body.id || path.basename(req.file.originalname, modelPackExt);
     const extracted = await extractVehicleZip_(req.file.buffer, vehicleId, req.file.originalname || 'source.zip');
     const finalized = await finalizeVehicleModelConversion_(extracted.safeId, extracted.sourceDir, extracted.root.full);
     const manifest = Object.assign({}, extracted.manifest, {
