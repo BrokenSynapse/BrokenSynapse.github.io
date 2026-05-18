@@ -44,8 +44,8 @@ const report = {
   blenderExitCode: result.code,
   outputExists: !!outputStat,
   outputBytes: outputStat ? outputStat.size : 0,
-  blenderStdout: result.out.slice(-12000),
-  blenderStderr: result.err.slice(-12000)
+  blenderStdout: result.out.slice(-24000),
+  blenderStderr: result.err.slice(-24000)
 };
 
 console.log(JSON.stringify(report, null, 2));

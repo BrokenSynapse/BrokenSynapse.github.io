@@ -559,6 +559,10 @@ async function findFirstFileByExt_(root, exts) {
 async function finalizeVehicleModelConversion_(safeId, sourceDir, rootFull) {
   const outputFile = path.join(rootFull, 'model.glb');
   const converted = await convertVehicleModel_(sourceDir, outputFile);
+  let converterReport = null;
+  try {
+    converterReport = JSON.parse(String(converted.stdout || '{}'));
+  } catch {}
   let glbFile = await fileExists_(outputFile) ? outputFile : '';
   let detectedGlb = '';
 
@@ -579,8 +583,10 @@ async function finalizeVehicleModelConversion_(safeId, sourceDir, rootFull) {
       outputFile,
       outputExists: !!glbFile,
       detectedGlb: detectedGlb ? detectedGlb.replace(rootFull, '').replace(/^[/\\]+/, '') : '',
-      stdout: String(converted.stdout || '').slice(-4000),
-      stderr: String(converted.stderr || '').slice(-4000)
+      blenderExitCode: converterReport ? converterReport.blenderExitCode : undefined,
+      outputBytes: converterReport ? converterReport.outputBytes : undefined,
+      stdout: String(converterReport?.blenderStdout || converted.stdout || '').slice(-24000),
+      stderr: String(converterReport?.blenderStderr || converted.stderr || '').slice(-24000)
     }
   };
 }
