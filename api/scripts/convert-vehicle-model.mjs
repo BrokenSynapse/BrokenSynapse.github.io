@@ -15,7 +15,7 @@ function run(cmd, args, opts = {}) {
     child.stdout.on('data', d => { out += d.toString(); });
     child.stderr.on('data', d => { err += d.toString(); });
     child.on('error', reject);
-    child.on('close', code => code === 0 ? resolve({ out, err }) : reject(new Error(err || out || `Blender exited ${code}`)));
+    child.on('close', code => resolve({ code, out, err }));
   });
 }
 
@@ -29,5 +29,26 @@ if (!input || !output) {
 }
 
 await fs.mkdir(path.dirname(output), { recursive: true });
-await run(blender, ['--background', '--python', script, '--', input, output]);
-console.log(JSON.stringify({ ok: true, input, output }, null, 2));
+const result = await run(blender, ['--background', '--factory-startup', '--python', script, '--', input, output]);
+let outputStat = null;
+try {
+  outputStat = await fs.stat(output);
+} catch {}
+
+const ok = result.code === 0 && !!outputStat && outputStat.size > 0;
+const report = {
+  ok,
+  input,
+  output,
+  blender: blender,
+  blenderExitCode: result.code,
+  outputExists: !!outputStat,
+  outputBytes: outputStat ? outputStat.size : 0,
+  blenderStdout: result.out.slice(-12000),
+  blenderStderr: result.err.slice(-12000)
+};
+
+console.log(JSON.stringify(report, null, 2));
+if (!ok) {
+  process.exitCode = 1;
+}
