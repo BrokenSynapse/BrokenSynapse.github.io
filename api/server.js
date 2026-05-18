@@ -638,6 +638,7 @@ async function finalizeVehicleModelConversion_(safeId, sourceDir, rootFull) {
       detectedGlb: detectedGlb ? detectedGlb.replace(rootFull, '').replace(/^[/\\]+/, '') : '',
       blenderExitCode: converterReport ? converterReport.blenderExitCode : undefined,
       outputBytes: converterReport ? converterReport.outputBytes : undefined,
+      kn5: converterReport ? converterReport.kn5 : undefined,
       stdout: String(converterReport?.blenderStdout || converted.stdout || '').slice(-24000),
       stderr: String(converterReport?.blenderStderr || converted.stderr || '').slice(-24000)
     }

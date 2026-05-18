@@ -18,6 +18,7 @@ services:
       context: ./api
       args:
         INSTALL_BLENDER: ${INSTALL_BLENDER:-0}
+        INSTALL_KN5: ${INSTALL_KN5:-0}
     container_name: bs-api
     restart: unless-stopped
     environment:
