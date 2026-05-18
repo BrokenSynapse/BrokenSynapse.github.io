@@ -14,7 +14,10 @@ services:
       - api
 
   api:
-    build: ./api
+    build:
+      context: ./api
+      args:
+        INSTALL_BLENDER: ${INSTALL_BLENDER:-0}
     container_name: bs-api
     restart: unless-stopped
     environment:

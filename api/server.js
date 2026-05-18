@@ -5,6 +5,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import cors from 'cors';
 import zlib from 'zlib';
+import { spawn } from 'node:child_process';
 import { rows as storeRows, ensureSheet as storeEnsureSheet, appendRow as storeAppendRow, updateRows as storeUpdateRows, listSheets, getSheet, putSheet, appendAudit } from './lib/store.js';
 
 const app = express();
@@ -37,7 +38,7 @@ const ASSET_ALLOWED_EXT = new Set([
   '.json','.txt','.csv','.md',
   '.mp3','.wav','.ogg',
   '.mp4','.webm',
-  '.glb','.gltf','.obj','.mtl',
+  '.glb','.gltf','.obj','.mtl','.dae',
   '.pdf'
 ]);
 
@@ -446,6 +447,83 @@ async function installIconPackFromZip_(buffer) {
   };
 }
 
+function safeVehicleAssetId_(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || ('vehicle-' + Date.now());
+}
+
+async function runProcess_(cmd, args, opts = {}) {
+  return await new Promise((resolve) => {
+    const child = spawn(cmd, args, { cwd: opts.cwd || process.cwd(), env: Object.assign({}, process.env, opts.env || {}) });
+    let stdout = '';
+    let stderr = '';
+    const timer = setTimeout(() => {
+      child.kill('SIGTERM');
+      resolve({ ok: false, code: -1, stdout, stderr: stderr + '\nTimed out.' });
+    }, opts.timeout || 180000);
+    child.stdout.on('data', d => { stdout += d.toString(); });
+    child.stderr.on('data', d => { stderr += d.toString(); });
+    child.on('error', err => {
+      clearTimeout(timer);
+      resolve({ ok: false, code: -1, stdout, stderr: err.message || String(err) });
+    });
+    child.on('close', code => {
+      clearTimeout(timer);
+      resolve({ ok: code === 0, code, stdout, stderr });
+    });
+  });
+}
+
+async function extractVehicleZip_(buffer, vehicleId) {
+  const entries = readZipEntries_(buffer).filter(entry => !String(entry.name || '').endsWith('/'));
+  if (entries.length > 240) throw new Error('Vehicle model zip has too many files.');
+
+  const safeId = safeVehicleAssetId_(vehicleId);
+  const root = assetFullPath_(`vehicles/models/${safeId}`);
+  const sourceDir = path.join(root.full, 'source');
+  await fs.rm(root.full, { recursive: true, force: true });
+  await fs.mkdir(sourceDir, { recursive: true });
+  await fs.writeFile(path.join(root.full, 'source.zip'), buffer);
+
+  const files = [];
+  for (const entry of entries) {
+    const clean = cleanZipPath_(entry.name);
+    if (!clean) throw new Error(`Unsafe zip path: ${entry.name}`);
+    if (entry.uncompressedSize > 180 * 1024 * 1024) throw new Error(`Vehicle zip entry too large: ${clean}`);
+    const ext = path.extname(clean).toLowerCase();
+    if (!['.dae','.png','.jpg','.jpeg','.webp','.tga','.bmp','.dds','.json','.txt','.mtl','.obj'].includes(ext)) continue;
+    const data = zipEntryData_(buffer, entry);
+    const out = path.resolve(sourceDir, clean);
+    if (!out.startsWith(sourceDir + path.sep) && out !== sourceDir) throw new Error(`Unsafe zip path: ${clean}`);
+    await fs.mkdir(path.dirname(out), { recursive: true });
+    await fs.writeFile(out, data);
+    files.push({ path: clean, size: entry.uncompressedSize, type: ext.replace('.', '') });
+  }
+
+  if (!files.some(f => f.type === 'dae')) throw new Error('Vehicle model zip must include at least one .dae file.');
+
+  const manifest = {
+    id: safeId,
+    vehicleId: String(vehicleId || safeId),
+    sourceZip: assetWebPath_(`vehicles/models/${safeId}/source.zip`),
+    sourceDir: assetWebPath_(`vehicles/models/${safeId}/source`),
+    glb: assetWebPath_(`vehicles/models/${safeId}/model.glb`),
+    files,
+    updatedAt: now_(),
+    conversion: { status: 'pending' }
+  };
+  await fs.writeFile(path.join(root.full, 'manifest.json'), JSON.stringify(manifest, null, 2));
+  return { safeId, root, sourceDir, manifest };
+}
+
+async function convertVehicleModel_(sourceDir, outputFile) {
+  const script = path.resolve('scripts/convert-vehicle-model.mjs');
+  return await runProcess_(process.execPath, [script, '--input', sourceDir, '--output', outputFile], { cwd: process.cwd(), timeout: 10 * 60 * 1000 });
+}
+
 app.get('/api/files/assets', async (req, res) => {
   try {
     await fs.mkdir(ASSET_ROOT, { recursive: true });
@@ -657,6 +735,44 @@ app.post('/api/files/write', express.text({ type: '*/*', limit: '2mb' }), async 
         relPath: target.rel,
         type: ext.replace('.', '')
       }
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message || String(err) });
+  }
+});
+
+app.post('/api/vehicles/model/upload', upload.single('file'), async (req, res) => {
+  try {
+    const admin = requireLmiAdmin_(req, res, 'Admin account required to upload vehicle model zips.');
+    if (!admin) return;
+    if (!req.file) return res.status(400).json({ ok: false, error: 'No vehicle model zip uploaded.' });
+    if (path.extname(req.file.originalname || '').toLowerCase() !== '.zip') {
+      return res.status(400).json({ ok: false, error: 'Vehicle model upload must be a .zip file.' });
+    }
+
+    const vehicleId = req.body.vehicleId || req.body.vid || req.body.id || path.basename(req.file.originalname, '.zip');
+    const extracted = await extractVehicleZip_(req.file.buffer, vehicleId);
+    const outputFile = path.join(extracted.root.full, 'model.glb');
+    const converted = await convertVehicleModel_(extracted.sourceDir, outputFile);
+    const glbExists = await fs.access(outputFile).then(() => true).catch(() => false);
+    const manifest = Object.assign({}, extracted.manifest, {
+      conversion: {
+        status: converted.ok && glbExists ? 'converted' : 'stored-source',
+        ok: converted.ok && glbExists,
+        stdout: String(converted.stdout || '').slice(-4000),
+        stderr: String(converted.stderr || '').slice(-4000)
+      },
+      glb: glbExists ? extracted.manifest.glb : ''
+    });
+    await fs.writeFile(path.join(extracted.root.full, 'manifest.json'), JSON.stringify(manifest, null, 2));
+    res.json({
+      ok: true,
+      vehicleId: extracted.safeId,
+      manifest: assetWebPath_(`vehicles/models/${extracted.safeId}/manifest.json`),
+      sourceZip: manifest.sourceZip,
+      sourceDir: manifest.sourceDir,
+      glb: manifest.glb,
+      conversion: manifest.conversion
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message || String(err) });
@@ -890,7 +1006,8 @@ const FIRST_PARTY_APPS = [
   { k: 'k', id: 'bank', nm: 'Bank.LMX', path: 'modules/bank.html', ico: '◇', desc: 'Wallet and account ledger', w: 860, h: 620 },
   { k: 'w', id: 'work', nm: 'Work.LMX', path: 'modules/work.html', ico: '$', desc: 'Snake payout labor terminal', w: 860, h: 620 },
   { k: 'p', id: 'pointOfSale', nm: 'POS.LMX', path: 'modules/pointOfSale.html?v=2026051501', ico: '▣', desc: 'Full point-of-sale register suite', w: 1280, h: 780 },
-  { k: 'd', id: 'dealership', nm: 'Dealership.LMX', path: 'modules/dealership.html', ico: 'V', desc: 'Vehicle catalog and sales terminal', w: 1120, h: 760 },
+  { k: 'd', id: 'dealership', nm: 'Fleetline.LMX', path: 'modules/dealership.html?v=2026051701', ico: 'FL', desc: 'Curated vehicle marketplace and showroom', w: 1240, h: 820 },
+  { k: 'g', id: 'garage', nm: 'Garage.LMX', path: 'modules/garage.html?v=2026051701', ico: 'G', desc: 'Owned vehicle garage, fueling, documents, and service hub', w: 1240, h: 820 },
   { k: 'm', id: 'bodyMods', nm: 'BodyMods.LMX', path: 'modules/bodyMods.html?v=2026051507', ico: '+', desc: 'Body Status tracker', w: 900, h: 650 },
   { k: 'h', id: 'chat', nm: 'Chat.LMX', path: 'modules/chat.html', ico: '#', desc: 'Board messenger process', w: 850, h: 620 },
   { k: 'ph', id: 'pharma', nm: 'Pharma.LMX', path: 'modules/pharma.html?v=2026051501', ico: 'Rx', desc: 'Public compound marketplace / clean supply registry', w: 1180, h: 800 },
@@ -1523,6 +1640,7 @@ function vehiclesSearch(payload) {
       transmission: pick_(r,['trans','transmission','transType','Transmission','Transmission Type'],''),
       drivetrain: pick_(r,['drive','drivetrain','Drivetrain','Drive','Layout'],''),
       price, description: pick_(r,['desc','description','Description','Blurb','blurb','Notes'],''), image: pick_(r,['img','image','Image','imageUrl','Image URL','Photo'],''),
+      modelManifest: pick_(r,['modelManifest','model3d','model','glb','GLB','Model Manifest'],''),
       extra: pick_(r,['extra','extras','Factory Extras','Extras','Addition','addition'],''), extraPrice,
       hp: pick_(r,['hp','HP','Horsepower'],''), tq: pick_(r,['tq','TQ','Torque'],''), zeroToSixty: pick_(r,['z60','zeroToSixty','0-60','0 to 60'], '')
     };
@@ -1697,10 +1815,43 @@ function vehiclesBuy(payload, user) {
   const c = coreFromUser_(user);
   const amount = Number(payload.amount || 0);
   const cents = -Math.round(amount * 100);
+  const saleId = 'vs_' + Date.now();
+  const vehicle = Object.assign({}, payload.vehicle || {}, {
+    id: payload.vehicleId || payload.id || payload.vehicle?.id || '',
+    manufacturer: payload.manufacturer || payload.vehicle?.manufacturer || '',
+    model: payload.model || payload.vehicle?.model || '',
+    purchaseKind: payload.kind || 'new',
+    purchaseAmount: amount,
+    addition: payload.addition || '',
+    purchasedAt: now_()
+  });
   const memo = 'Vehicle purchase: ' + [payload.kind || 'new', payload.manufacturer, payload.model, payload.addition && payload.addition !== 'none' ? '(' + payload.addition + ')' : ''].filter(Boolean).join(' ');
   writeLedger_(c.cid, c.bid, 'vehicle', cents, c.cur || 'LGD', memo, c.tag, payload);
-  appendSafe_('vehicleSales', ['saleId','cid','t','vehicleId','kind','amount','blob'], { saleId: 'vs_' + Date.now(), cid: c.cid, t: now_(), vehicleId: payload.vehicleId || '', kind: payload.kind || 'new', amount: Math.round(amount * 100), blob: pack_(payload) });
-  return { bought: true, amount };
+  appendSafe_('vehicleSales', ['saleId','cid','t','vehicleId','kind','amount','blob'], { saleId, cid: c.cid, t: now_(), vehicleId: payload.vehicleId || '', kind: payload.kind || 'new', amount: Math.round(amount * 100), blob: pack_(payload) });
+  appendSafe_('vehicleGarage', ['garageId','cid','saleId','vehicleId','name','kind','status','primary','mileage','purchasedAt','amount','blob'], {
+    garageId: 'vg_' + Date.now(),
+    cid: c.cid,
+    saleId,
+    vehicleId: vehicle.id || payload.vehicleId || '',
+    name: [vehicle.manufacturer, vehicle.model].filter(Boolean).join(' ') || 'Vehicle',
+    kind: payload.kind || 'new',
+    status: 'stored',
+    primary: rows_('vehicleGarage').some(r => r.cid === c.cid) ? '' : 'TRUE',
+    mileage: Number(vehicle.mileage || 0),
+    purchasedAt: now_(),
+    amount: Math.round(amount * 100),
+    blob: pack_(vehicle)
+  });
+  return { bought: true, amount, garage: true, saleId };
+}
+function garageList(payload, user) {
+  const c = coreFromUser_(user);
+  ensureSheet_('vehicleGarage', ['garageId','cid','saleId','vehicleId','name','kind','status','primary','mileage','purchasedAt','amount','blob']);
+  const vehicles = rows_('vehicleGarage').filter(r => r.cid === c.cid).map(r => Object.assign({}, r, {
+    amount: centsToNumber_(r.amount || 0),
+    vehicle: unpackSafe_(r.blob)
+  }));
+  return { vehicles };
 }
 function bodyInstalled(payload, user) {
   const c = coreFromUser_(user);
@@ -2038,6 +2189,7 @@ const routes = {
   'catalog.search': catalogSearch,
   'vehicles.search': vehiclesSearch,
   'vehicles.buy': vehiclesBuy,
+  'garage.list': garageList,
   'bank.getAccount': bankGetAccount,
   'bank.ledger': bankLedger,
   'qvault.list': qvaultList,
