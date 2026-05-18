@@ -524,6 +524,67 @@ async function convertVehicleModel_(sourceDir, outputFile) {
   return await runProcess_(process.execPath, [script, '--input', sourceDir, '--output', outputFile], { cwd: process.cwd(), timeout: 10 * 60 * 1000 });
 }
 
+async function fileExists_(file) {
+  try {
+    await fs.access(file);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function findFirstFileByExt_(root, exts) {
+  const wanted = new Set(exts.map(x => String(x).toLowerCase()));
+  async function walk(dir) {
+    let entries = [];
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return '';
+    }
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isFile() && wanted.has(path.extname(entry.name).toLowerCase())) return full;
+      if (entry.isDirectory()) {
+        const hit = await walk(full);
+        if (hit) return hit;
+      }
+    }
+    return '';
+  }
+  return walk(root);
+}
+
+async function finalizeVehicleModelConversion_(safeId, sourceDir, rootFull) {
+  const outputFile = path.join(rootFull, 'model.glb');
+  const converted = await convertVehicleModel_(sourceDir, outputFile);
+  let glbFile = await fileExists_(outputFile) ? outputFile : '';
+  let detectedGlb = '';
+
+  if (!glbFile) {
+    detectedGlb = await findFirstFileByExt_(rootFull, ['.glb']);
+    if (detectedGlb) {
+      await fs.copyFile(detectedGlb, outputFile);
+      glbFile = outputFile;
+    }
+  }
+
+  const ok = converted.ok && !!glbFile;
+  return {
+    glb: glbFile ? assetWebPath_(`vehicles/models/${safeId}/model.glb`) : '',
+    conversion: {
+      status: ok ? 'converted' : 'stored-source',
+      ok,
+      outputFile,
+      outputExists: !!glbFile,
+      detectedGlb: detectedGlb ? detectedGlb.replace(rootFull, '').replace(/^[/\\]+/, '') : '',
+      stdout: String(converted.stdout || '').slice(-4000),
+      stderr: String(converted.stderr || '').slice(-4000)
+    }
+  };
+}
+
 app.get('/api/files/assets', async (req, res) => {
   try {
     await fs.mkdir(ASSET_ROOT, { recursive: true });
@@ -752,17 +813,10 @@ app.post('/api/vehicles/model/upload', upload.single('file'), async (req, res) =
 
     const vehicleId = req.body.vehicleId || req.body.vid || req.body.id || path.basename(req.file.originalname, '.zip');
     const extracted = await extractVehicleZip_(req.file.buffer, vehicleId);
-    const outputFile = path.join(extracted.root.full, 'model.glb');
-    const converted = await convertVehicleModel_(extracted.sourceDir, outputFile);
-    const glbExists = await fs.access(outputFile).then(() => true).catch(() => false);
+    const finalized = await finalizeVehicleModelConversion_(extracted.safeId, extracted.sourceDir, extracted.root.full);
     const manifest = Object.assign({}, extracted.manifest, {
-      conversion: {
-        status: converted.ok && glbExists ? 'converted' : 'stored-source',
-        ok: converted.ok && glbExists,
-        stdout: String(converted.stdout || '').slice(-4000),
-        stderr: String(converted.stderr || '').slice(-4000)
-      },
-      glb: glbExists ? extracted.manifest.glb : ''
+      conversion: finalized.conversion,
+      glb: finalized.glb
     });
     await fs.writeFile(path.join(extracted.root.full, 'manifest.json'), JSON.stringify(manifest, null, 2));
     res.json({
@@ -771,6 +825,51 @@ app.post('/api/vehicles/model/upload', upload.single('file'), async (req, res) =
       manifest: assetWebPath_(`vehicles/models/${extracted.safeId}/manifest.json`),
       sourceZip: manifest.sourceZip,
       sourceDir: manifest.sourceDir,
+      glb: manifest.glb,
+      conversion: manifest.conversion
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message || String(err) });
+  }
+});
+
+app.post('/api/vehicles/model/convert', express.json({ limit: '2mb' }), async (req, res) => {
+  try {
+    const admin = requireLmiAdmin_(req, res, 'Admin account required to convert vehicle models.');
+    if (!admin) return;
+    const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+    const vehicleId = body.vehicleId || body.vid || body.id;
+    if (!vehicleId) return res.status(400).json({ ok: false, error: 'vehicleId is required.' });
+
+    const safeId = safeVehicleAssetId_(vehicleId);
+    const root = assetFullPath_(`vehicles/models/${safeId}`);
+    const sourceDir = path.join(root.full, 'source');
+    const manifestFile = path.join(root.full, 'manifest.json');
+    if (!await fileExists_(manifestFile)) return res.status(404).json({ ok: false, error: `No vehicle model manifest found for ${safeId}.` });
+    if (!await fileExists_(sourceDir)) return res.status(404).json({ ok: false, error: `No source directory found for ${safeId}.` });
+
+    let existing = {};
+    try {
+      existing = JSON.parse(await fs.readFile(manifestFile, 'utf8'));
+    } catch {
+      existing = {};
+    }
+
+    const finalized = await finalizeVehicleModelConversion_(safeId, sourceDir, root.full);
+    const manifest = Object.assign({}, existing, {
+      id: existing.id || safeId,
+      vehicleId: existing.vehicleId || String(vehicleId),
+      sourceZip: existing.sourceZip || assetWebPath_(`vehicles/models/${safeId}/source.zip`),
+      sourceDir: existing.sourceDir || assetWebPath_(`vehicles/models/${safeId}/source`),
+      updatedAt: now_(),
+      glb: finalized.glb,
+      conversion: finalized.conversion
+    });
+    await fs.writeFile(manifestFile, JSON.stringify(manifest, null, 2));
+    res.json({
+      ok: true,
+      vehicleId: safeId,
+      manifest: assetWebPath_(`vehicles/models/${safeId}/manifest.json`),
       glb: manifest.glb,
       conversion: manifest.conversion
     });
@@ -1006,12 +1105,12 @@ const FIRST_PARTY_APPS = [
   { k: 'k', id: 'bank', nm: 'Bank.LMX', path: 'modules/bank.html', ico: '◇', desc: 'Wallet and account ledger', w: 860, h: 620 },
   { k: 'w', id: 'work', nm: 'Work.LMX', path: 'modules/work.html', ico: '$', desc: 'Snake payout labor terminal', w: 860, h: 620 },
   { k: 'p', id: 'pointOfSale', nm: 'POS.LMX', path: 'modules/pointOfSale.html?v=2026051501', ico: '▣', desc: 'Full point-of-sale register suite', w: 1280, h: 780 },
-  { k: 'd', id: 'dealership', nm: 'Fleetline.LMX', path: 'modules/dealership.html?v=2026051701', ico: 'FL', desc: 'Curated vehicle marketplace and showroom', w: 1240, h: 820 },
-  { k: 'g', id: 'garage', nm: 'Garage.LMX', path: 'modules/garage.html?v=2026051701', ico: 'G', desc: 'Owned vehicle garage, fueling, documents, and service hub', w: 1240, h: 820 },
+  { k: 'd', id: 'dealership', nm: 'Fleetline.LMX', path: 'modules/dealership.html?v=2026051801', ico: 'FL', desc: 'Curated vehicle marketplace and showroom', w: 1240, h: 820 },
+  { k: 'g', id: 'garage', nm: 'Garage.LMX', path: 'modules/garage.html?v=2026051801', ico: 'G', desc: 'Owned vehicle garage, fueling, documents, and service hub', w: 1240, h: 820 },
   { k: 'm', id: 'bodyMods', nm: 'BodyMods.LMX', path: 'modules/bodyMods.html?v=2026051507', ico: '+', desc: 'Body Status tracker', w: 900, h: 650 },
   { k: 'h', id: 'chat', nm: 'Chat.LMX', path: 'modules/chat.html', ico: '#', desc: 'Board messenger process', w: 850, h: 620 },
   { k: 'ph', id: 'pharma', nm: 'Pharma.LMX', path: 'modules/pharma.html?v=2026051501', ico: 'Rx', desc: 'Public compound marketplace / clean supply registry', w: 1180, h: 800 },
-  { k: 'df', id: 'dataEditor', nm: 'DataForge.LMX', path: 'modules/dataEditor.html?v=2026051502', ico: 'DF', desc: 'Sheet entry formatter', w: 980, h: 720 },
+  { k: 'df', id: 'dataEditor', nm: 'DataForge.LMX', path: 'modules/dataEditor.html?v=2026051801', ico: 'DF', desc: 'Sheet entry formatter', w: 980, h: 720 },
   { k: 'qv', id: 'qvault', nm: 'QVault.LMX', path: 'modules/qvault.html?v=2026051502', ico: 'QV', desc: 'Personal inventory grid', w: 980, h: 760 },
   { k: 'ax', id: 'axeom', nm: 'AXξOM.LMX', path: 'modules/axeom.html?v=2026051702', ico: 'AX', desc: 'Sequential eteph spellcraft compiler', w: 1180, h: 780 },
   { k: 'cv', id: 'convert', nm: 'Convert.LMX', path: 'modules/convert.html', ico: '⇄', desc: 'Currency and unit conversion suite', w: 760, h: 560, startOnly: true },

@@ -564,11 +564,11 @@
     bipac:'modules/bipac.html?v=2026051611',
     browser:'modules/browser.html?v=2026051605',
     bodyMods:'modules/bodyMods.html?v=2026051507',
-    dealership:'modules/dealership.html?v=2026051701',
-    d:'modules/dealership.html?v=2026051701',
-    garage:'modules/garage.html?v=2026051701',
-    g:'modules/garage.html?v=2026051701',
-    dataEditor:'modules/dataEditor.html?v=2026051502',
+    dealership:'modules/dealership.html?v=2026051801',
+    d:'modules/dealership.html?v=2026051801',
+    garage:'modules/garage.html?v=2026051801',
+    g:'modules/garage.html?v=2026051801',
+    dataEditor:'modules/dataEditor.html?v=2026051801',
     axeom:'modules/axeom.html?v=2026051702',
     ax:'modules/axeom.html?v=2026051702',
     pharma:'modules/pharma.html?v=2026051501',
@@ -1083,6 +1083,10 @@ function renderDesktop(){
   window.addEventListener('message',async event=>{
     if(event.origin!==location.origin)return;
     const msg=event.data||{};
+    if(msg.type==='LMI_GARAGE_REFRESH'){
+      document.querySelectorAll('.win-frame').forEach(fr=>fr.contentWindow?.postMessage({type:'LMI_GARAGE_REFRESH'},location.origin));
+      return;
+    }
     if(msg.type!=='LMI_OPEN_APP')return;
     const id=String(msg.appId||msg.id||'').trim();
     let app=(runtime.apps||[]).find(a=>a.id===id||a.key===id||String(a.name||'').toLowerCase()===id.toLowerCase());
