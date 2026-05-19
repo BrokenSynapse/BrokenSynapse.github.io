@@ -2013,6 +2013,35 @@ function garageList(payload, user) {
   }));
   return { vehicles };
 }
+function garageUpdate(payload, user) {
+  const c = coreFromUser_(user);
+  ensureSheet_('vehicleGarage', ['garageId','cid','saleId','vehicleId','name','kind','status','primary','mileage','purchasedAt','amount','blob']);
+  const garageId = String(payload.garageId || payload.id || '').trim();
+  const saleId = String(payload.saleId || '').trim();
+  const vehicleId = String(payload.vehicleId || '').trim();
+  if (!garageId && !saleId && !vehicleId) throw new Error('garageId, saleId, or vehicleId is required.');
+
+  let updated = null;
+  const changed = updateRows_('vehicleGarage', r => {
+    if (r.cid !== c.cid) return false;
+    if (garageId) return String(r.garageId || '') === garageId;
+    if (saleId) return String(r.saleId || '') === saleId;
+    return String(r.vehicleId || '') === vehicleId;
+  }, r => {
+    const vehicle = Object.assign({}, unpackSafe_(r.blob));
+    const patch = {};
+    if (payload.paint && typeof payload.paint === 'object') {
+      patch.garagePaint = Object.assign({}, vehicle.garagePaint || {}, payload.paint);
+      if (payload.paint.body) patch.paintColor = payload.paint.body;
+    }
+    if (payload.notes !== undefined) patch.garageNotes = String(payload.notes || '').slice(0, 4000);
+    updated = Object.assign({}, vehicle, patch, { updatedAt: now_() });
+    return { blob: pack_(updated) };
+  });
+  appendSafe_('audit', ['id','t','cid','action','ok','blob'], { id:'a_'+Date.now(), t:now_(), cid:c.cid, action:'garage.update', ok:changed ? 1 : 0, blob:pack_({ garageId, saleId, vehicleId, paint: payload.paint || null }) });
+  if (!changed) throw new Error('Garage vehicle not found.');
+  return { updated: true, vehicle: updated };
+}
 function bodyInstalled(payload, user) {
   const c = coreFromUser_(user);
   ensureSheet_('bodyInstalled', ['id','cid','profileId','baseMesh','meshPath','mid','slot','name','note','t','blob']);
@@ -2350,6 +2379,7 @@ const routes = {
   'vehicles.search': vehiclesSearch,
   'vehicles.buy': vehiclesBuy,
   'garage.list': garageList,
+  'garage.update': garageUpdate,
   'bank.getAccount': bankGetAccount,
   'bank.ledger': bankLedger,
   'qvault.list': qvaultList,
