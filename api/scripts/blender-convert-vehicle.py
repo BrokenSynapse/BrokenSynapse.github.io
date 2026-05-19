@@ -15,6 +15,16 @@ def find_model_files(root):
             ext = os.path.splitext(name.lower())[1]
             if ext in {".dae", ".fbx", ".obj"}:
                 matches.append(os.path.join(base, name))
+    primary_matches = []
+    for model_file in matches:
+        name = os.path.basename(model_file).lower()
+        if any(token in name for token in ("collider", "collision")):
+            continue
+        if re.search(r"(^|[_\-.])lod([_\-.]|[a-z0-9])", name):
+            continue
+        primary_matches.append(model_file)
+    if primary_matches:
+        matches = primary_matches
     matches.sort(key=lambda p: (0 if "car" in os.path.basename(p).lower() or "body" in os.path.basename(p).lower() else 1, len(p)))
     return matches
 

@@ -68,10 +68,15 @@ async function maybeConvertKn5(input) {
   const python = process.env.KN5_PYTHON_BIN || process.env.PYTHON_BIN || 'python3';
   const before = await walk(input);
   const results = [];
-  for (const file of kn5) {
-    const result = await run(python, [converter, file], { cwd: path.dirname(file) });
+  const directories = [...new Set(kn5.map(file => path.dirname(file)))].sort((a, b) => a.length - b.length);
+  for (const directory of directories) {
+    const dirKn5 = kn5
+      .filter(file => path.dirname(file) === directory)
+      .map(file => path.relative(input, file).replace(/\\/g, '/'));
+    const result = await run(python, [converter, directory], { cwd: directory });
     results.push({
-      file: path.relative(input, file).replace(/\\/g, '/'),
+      directory: path.relative(input, directory).replace(/\\/g, '/') || '.',
+      files: dirKn5,
       code: result.code,
       ok: result.code === 0,
       stdout: result.out.slice(-4000),
@@ -83,7 +88,20 @@ async function maybeConvertKn5(input) {
   const created = after
     .filter(file => !beforeSet.has(path.resolve(file)) && ['.obj', '.mtl'].includes(path.extname(file).toLowerCase()))
     .map(file => path.relative(input, file).replace(/\\/g, '/'));
-  return { attempted: true, ok: results.every(r => r.ok), converter, python, files: kn5.map(file => path.relative(input, file).replace(/\\/g, '/')), created, results };
+  const usableModels = after
+    .filter(file => ['.dae', '.fbx', '.obj'].includes(path.extname(file).toLowerCase()))
+    .map(file => path.relative(input, file).replace(/\\/g, '/'));
+  return {
+    attempted: true,
+    ok: usableModels.length > 0,
+    converter,
+    python,
+    files: kn5.map(file => path.relative(input, file).replace(/\\/g, '/')),
+    directories: directories.map(dir => path.relative(input, dir).replace(/\\/g, '/') || '.'),
+    created,
+    usableModels,
+    results
+  };
 }
 
 const input = path.resolve(arg('--input'));
