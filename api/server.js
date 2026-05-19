@@ -86,7 +86,7 @@ function userFromRequest_(req) {
   try {
     return JSON.parse(String(raw));
   } catch {
-    return {};
+    return { tag: String(raw).trim() };
   }
 }
 
