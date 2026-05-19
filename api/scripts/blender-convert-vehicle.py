@@ -163,6 +163,54 @@ def set_input(node, name, value):
         node.inputs[name].default_value = value
 
 
+def find_principled(mat):
+    if not mat.use_nodes or not mat.node_tree:
+        return None
+    for node in mat.node_tree.nodes:
+        if node.type == "BSDF_PRINCIPLED":
+            return node
+    return None
+
+
+def has_base_color_texture(bsdf):
+    if not bsdf or "Base Color" not in bsdf.inputs:
+        return False
+    return bool(bsdf.inputs["Base Color"].links)
+
+
+def ensure_principled(mat):
+    mat.use_nodes = True
+    nodes = mat.node_tree.nodes
+    bsdf = find_principled(mat)
+    if bsdf:
+        return bsdf
+    out = None
+    for node in nodes:
+        if node.type == "OUTPUT_MATERIAL":
+            out = node
+            break
+    if not out:
+        out = nodes.new(type="ShaderNodeOutputMaterial")
+    bsdf = nodes.new(type="ShaderNodeBsdfPrincipled")
+    mat.node_tree.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
+    return bsdf
+
+
+def material_kind(name):
+    lowered = str(name or "").lower()
+    if any(token in lowered for token in ("glass", "window", "windshield", "windscreen")):
+        return "glass"
+    if any(token in lowered for token in ("tire", "tyre", "rubber")):
+        return "rubber"
+    if any(token in lowered for token in ("chrome", "polished", "metal", "exhaust", "pipe", "axle", "shaft", "hub", "rim")):
+        return "metal"
+    if any(token in lowered for token in ("light", "lamp", "reflector")):
+        return "lamp"
+    if any(token in lowered for token in ("paint", "body", "car_paint", "ext_car")):
+        return "paint"
+    return "general"
+
+
 def rebuild_material(mat, hints):
     material_key = clean_key(mat.name)
     hint = hints.get(material_key)
@@ -182,23 +230,44 @@ def rebuild_material(mat, hints):
     if "glass" in mat.name.lower() or "window" in mat.name.lower():
         base = (base[0], base[1], base[2], min(base[3], 0.45))
     mat.diffuse_color = base
-    mat.use_nodes = True
-    nodes = mat.node_tree.nodes
-    nodes.clear()
-    bsdf = nodes.new(type="ShaderNodeBsdfPrincipled")
-    out = nodes.new(type="ShaderNodeOutputMaterial")
-    set_input(bsdf, "Base Color", base)
+    bsdf = ensure_principled(mat)
+    kind = material_kind(mat.name)
+    # Preserve imported texture wiring from OBJ/MTL/DAE. Only write a flat
+    # color when the material has no base-color texture link to keep decals,
+    # badges, livery art, and baked details from being flattened.
+    if not has_base_color_texture(bsdf):
+        set_input(bsdf, "Base Color", base)
+    if kind == "glass":
+        metallic = 0.0
+        roughness = 0.02
+        base = (max(base[0], 0.10), max(base[1], 0.15), max(base[2], 0.18), min(base[3], 0.34))
+        if not has_base_color_texture(bsdf):
+            set_input(bsdf, "Base Color", base)
+    elif kind == "paint":
+        metallic = max(metallic, 0.28)
+        roughness = min(roughness, 0.36)
+    elif kind == "metal":
+        metallic = max(metallic, 0.78)
+        roughness = min(roughness, 0.26)
+    elif kind == "rubber":
+        metallic = 0.0
+        roughness = max(roughness, 0.78)
     set_input(bsdf, "Metallic", metallic)
     set_input(bsdf, "Roughness", roughness)
     set_input(bsdf, "Alpha", base[3])
     set_input(bsdf, "IOR", 1.45)
-    mat.node_tree.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
     mat.blend_method = "BLEND" if base[3] < 0.98 else "OPAQUE"
     mat.use_screen_refraction = base[3] < 0.98
+    try:
+        mat.show_transparent_back = base[3] >= 0.98
+    except Exception:
+        pass
     return {
         "name": mat.name,
         "color": [round(v, 4) for v in base],
-        "hint": hint.get("source") if hint else ""
+        "hint": hint.get("source") if hint else "",
+        "kind": kind,
+        "textured": has_base_color_texture(bsdf)
     }
 
 
