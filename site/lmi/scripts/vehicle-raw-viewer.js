@@ -64,6 +64,12 @@ function tuneMaterials(THREE, object) {
     if (!child.isMesh) return;
     child.castShadow = true;
     child.receiveShadow = true;
+    const fallback = new THREE.MeshStandardMaterial({ color: 0xd8dde2, roughness: 0.62, metalness: 0.05 });
+    if (Array.isArray(child.material)) {
+      child.material = child.material.map(mat => mat || fallback);
+    } else if (!child.material) {
+      child.material = fallback;
+    }
     const mats = (Array.isArray(child.material) ? child.material : [child.material]).filter(Boolean);
     for (const mat of mats) {
       const name = String(mat.name || '').toLowerCase();
