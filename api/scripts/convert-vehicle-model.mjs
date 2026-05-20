@@ -47,6 +47,11 @@ async function exists(file) {
   }
 }
 
+function isLodModel(file) {
+  const name = path.basename(file).toLowerCase();
+  return /(^|[_\-.])lod([_\-.]|[a-z0-9])/.test(name) || /_lod_[a-z0-9]+/.test(name);
+}
+
 async function maybeConvertKn5(input) {
   const files = await walk(input);
   const kn5 = files.filter(file => path.extname(file).toLowerCase() === '.kn5');
@@ -90,6 +95,7 @@ async function maybeConvertKn5(input) {
     .map(file => path.relative(input, file).replace(/\\/g, '/'));
   const usableModels = after
     .filter(file => ['.dae', '.fbx', '.obj'].includes(path.extname(file).toLowerCase()))
+    .filter(file => !isLodModel(file))
     .map(file => path.relative(input, file).replace(/\\/g, '/'));
   return {
     attempted: true,

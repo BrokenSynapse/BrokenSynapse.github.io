@@ -236,7 +236,16 @@ def should_keep_base_texture(name):
     lowered = str(name or "").lower()
     return any(token in lowered for token in (
         "badge", "logo", "emblem", "plate", "gauge", "dash", "sticker",
-        "number", "dial", "screen", "light", "lamp", "reflector"
+        "number", "dial", "screen", "light", "lamp", "reflector", "decal",
+        "trim", "grille", "louver", "spoiler", "splitter", "chrome",
+        "fabric", "leather", "carpet", "seat", "interior", "int_"
+    ))
+
+
+def should_keep_livery_texture(name):
+    lowered = str(name or "").lower()
+    return any(token in lowered for token in (
+        "badge", "logo", "emblem", "plate", "sticker", "number", "decal"
     ))
 
 
@@ -245,13 +254,16 @@ def should_strip_base_texture(name, texture_paths, kind):
     joined = " ".join(str(path or "").lower() for path in texture_paths)
     if kind == "paint":
         return True
+    if "livery" in joined and not should_keep_livery_texture(lowered):
+        return True
     if should_keep_base_texture(lowered):
         return False
-    if any(token in joined for token in (
-        "livery", "ao_body", "body_map", "metal_detail", "roughness",
-        "normal", "_nm", "rbgmask", "macrovariation", "shadow"
-    )):
+    if any(token in joined for token in ("normal", "_nm", "roughness", "rbgmask", "shadow")):
         return True
+    if any(token in joined for token in (
+        "livery", "ao_body", "body_map", "macrovariation"
+    )):
+        return any(token in lowered for token in ("body", "paint", "skin", "wrap", "decal"))
     return False
 
 
