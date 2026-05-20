@@ -24,7 +24,7 @@ async function ensureRawViewerModules() {
 function disposeObject(obj) {
   obj.traverse(child => {
     if (child.geometry) child.geometry.dispose();
-    const mats = Array.isArray(child.material) ? child.material : [child.material].filter(Boolean);
+    const mats = (Array.isArray(child.material) ? child.material : [child.material]).filter(Boolean);
     for (const mat of mats) {
       for (const value of Object.values(mat)) {
         if (value && value.isTexture) value.dispose();
@@ -64,7 +64,7 @@ function tuneMaterials(THREE, object) {
     if (!child.isMesh) return;
     child.castShadow = true;
     child.receiveShadow = true;
-    const mats = Array.isArray(child.material) ? child.material : [child.material].filter(Boolean);
+    const mats = (Array.isArray(child.material) ? child.material : [child.material]).filter(Boolean);
     for (const mat of mats) {
       const name = String(mat.name || '').toLowerCase();
       mat.side = THREE.DoubleSide;
@@ -88,6 +88,10 @@ function tuneMaterials(THREE, object) {
 
 function emitProgress(opts, text) {
   if (typeof opts.onProgress === 'function') opts.onProgress(text);
+}
+
+function emitFirstObject(opts) {
+  if (typeof opts.onFirstObject === 'function') opts.onFirstObject();
 }
 
 async function loadDaeScene(THREE, manager, item) {
@@ -124,6 +128,7 @@ async function streamRawSource(THREE, manager, source, root, controls, camera, s
       }
       tuneMaterials(THREE, scene);
       root.add(scene);
+      emitFirstObject(opts);
       fitCamera(THREE, camera, controls, root);
       emitProgress(opts, i === items.length - 1 ? 'Raw DAE ready.' : `Showing DAE ${i + 1}/${items.length}...`);
       await new Promise(resolve => requestAnimationFrame(resolve));
@@ -138,6 +143,7 @@ async function streamRawSource(THREE, manager, source, root, controls, camera, s
     }
     tuneMaterials(THREE, object);
     root.add(object);
+    emitFirstObject(opts);
     fitCamera(THREE, camera, controls, root);
     emitProgress(opts, 'Raw KN5 source ready.');
     return;

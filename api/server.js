@@ -685,7 +685,7 @@ async function rawVehicleSources_(safeId, sourceDir) {
       };
     });
 
-  const dae = raw.filter(item => item.type === 'dae').sort((a, b) => b.size - a.size);
+  const dae = raw.filter(item => item.type === 'dae').sort((a, b) => a.size - b.size);
   const obj = raw.filter(item => item.type === 'obj').sort((a, b) => b.size - a.size);
   const primaryObj = obj[0] || null;
   let primaryObjMtl = '';
