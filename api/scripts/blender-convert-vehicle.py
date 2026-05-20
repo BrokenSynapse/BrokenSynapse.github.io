@@ -178,6 +178,27 @@ def has_base_color_texture(bsdf):
     return bool(bsdf.inputs["Base Color"].links)
 
 
+def base_color_texture_paths(bsdf):
+    if not bsdf or "Base Color" not in bsdf.inputs:
+        return []
+    paths = []
+    for link in bsdf.inputs["Base Color"].links:
+        node = link.from_node
+        if node and node.type == "TEX_IMAGE" and getattr(node, "image", None):
+            image = node.image
+            paths.append(image.filepath or image.name or "")
+    return paths
+
+
+def remove_base_color_texture_links(mat, bsdf):
+    if not bsdf or "Base Color" not in bsdf.inputs or not mat.node_tree:
+        return 0
+    links = list(bsdf.inputs["Base Color"].links)
+    for link in links:
+        mat.node_tree.links.remove(link)
+    return len(links)
+
+
 def ensure_principled(mat):
     mat.use_nodes = True
     nodes = mat.node_tree.nodes
@@ -211,6 +232,29 @@ def material_kind(name):
     return "general"
 
 
+def should_keep_base_texture(name):
+    lowered = str(name or "").lower()
+    return any(token in lowered for token in (
+        "badge", "logo", "emblem", "plate", "gauge", "dash", "sticker",
+        "number", "dial", "screen", "light", "lamp", "reflector"
+    ))
+
+
+def should_strip_base_texture(name, texture_paths, kind):
+    lowered = str(name or "").lower()
+    joined = " ".join(str(path or "").lower() for path in texture_paths)
+    if kind == "paint":
+        return True
+    if should_keep_base_texture(lowered):
+        return False
+    if any(token in joined for token in (
+        "livery", "ao_body", "body_map", "metal_detail", "roughness",
+        "normal", "_nm", "rbgmask", "macrovariation", "shadow"
+    )):
+        return True
+    return False
+
+
 def rebuild_material(mat, hints):
     material_key = clean_key(mat.name)
     hint = hints.get(material_key)
@@ -232,9 +276,13 @@ def rebuild_material(mat, hints):
     mat.diffuse_color = base
     bsdf = ensure_principled(mat)
     kind = material_kind(mat.name)
-    # Preserve imported texture wiring from OBJ/MTL/DAE. Only write a flat
-    # color when the material has no base-color texture link to keep decals,
-    # badges, livery art, and baked details from being flattened.
+    texture_paths_before = base_color_texture_paths(bsdf)
+    stripped_texture_links = 0
+    if should_strip_base_texture(mat.name, texture_paths_before, kind):
+        stripped_texture_links = remove_base_color_texture_links(mat, bsdf)
+    # Preserve imported texture wiring from OBJ/MTL/DAE for real detail
+    # materials. Paint/body materials are intentionally flattened so random
+    # skin overlays do not become the base paint.
     if not has_base_color_texture(bsdf):
         set_input(bsdf, "Base Color", base)
     if kind == "glass":
@@ -267,7 +315,9 @@ def rebuild_material(mat, hints):
         "color": [round(v, 4) for v in base],
         "hint": hint.get("source") if hint else "",
         "kind": kind,
-        "textured": has_base_color_texture(bsdf)
+        "textured": has_base_color_texture(bsdf),
+        "baseTextures": [os.path.basename(path) for path in texture_paths_before[:4]],
+        "strippedBaseTextures": stripped_texture_links
     }
 
 
