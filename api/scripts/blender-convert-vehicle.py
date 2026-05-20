@@ -6,6 +6,7 @@ import bpy
 
 
 COLOR_HEX_RE = re.compile(r"0x([0-9a-fA-F]{8})")
+TEXTURE_MAX_SIZE = int(os.environ.get("VEHICLE_TEXTURE_MAX", "1024") or "1024")
 
 
 def find_model_files(root):
@@ -343,6 +344,38 @@ def sanitize_materials(source_dir):
     return report
 
 
+def optimize_images(max_size):
+    report = []
+    if not max_size or max_size <= 0:
+        return report
+    for image in bpy.data.images:
+        try:
+            width, height = int(image.size[0]), int(image.size[1])
+        except Exception:
+            continue
+        if width <= 0 or height <= 0 or max(width, height) <= max_size:
+            continue
+        scale = max_size / float(max(width, height))
+        new_width = max(1, int(width * scale))
+        new_height = max(1, int(height * scale))
+        try:
+            image.scale(new_width, new_height)
+            if not image.packed_file:
+                image.pack()
+            report.append({
+                "name": image.name,
+                "from": [width, height],
+                "to": [new_width, new_height]
+            })
+        except Exception as exc:
+            report.append({
+                "name": image.name,
+                "from": [width, height],
+                "error": str(exc)
+            })
+    return report
+
+
 def main():
     args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     if len(args) < 2:
@@ -395,6 +428,7 @@ def main():
         raise SystemExit("No mesh objects imported from .dae files. Import report: %s" % json.dumps(imported_reports))
 
     material_report = sanitize_materials(source_dir)
+    image_report = optimize_images(TEXTURE_MAX_SIZE)
 
     for obj in bpy.context.scene.objects:
         obj.select_set(obj.type == "MESH")
@@ -435,6 +469,9 @@ def main():
         "wheelLikeMeshes": wheel_like[:80],
         "materialsSanitized": len(material_report),
         "materialSample": material_report[:80],
+        "textureMaxSize": TEXTURE_MAX_SIZE,
+        "imagesOptimized": len([item for item in image_report if "to" in item]),
+        "imageSample": image_report[:80],
         "warnings": warnings,
         "imports": imported_reports,
         "exportResult": list(export_result)
