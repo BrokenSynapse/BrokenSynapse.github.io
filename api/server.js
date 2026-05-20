@@ -29,6 +29,25 @@ const upload = multer({
   limits: { fileSize: Number(process.env.MAX_UPLOAD_MB || 600) * 1024 * 1024 }
 });
 
+const VEHICLE_UPLOAD_TMP = process.env.VEHICLE_UPLOAD_TMP || (process.platform === 'win32' ? path.resolve('uploads/vehicle-model-packs') : '/uploads/vehicle-model-packs');
+const vehicleUpload = multer({
+  storage: multer.diskStorage({
+    destination: async (_req, _file, cb) => {
+      try {
+        await fs.mkdir(VEHICLE_UPLOAD_TMP, { recursive: true });
+        cb(null, VEHICLE_UPLOAD_TMP);
+      } catch (err) {
+        cb(err);
+      }
+    },
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname || '').toLowerCase();
+      cb(null, `${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`);
+    }
+  }),
+  limits: { fileSize: Number(process.env.MAX_VEHICLE_UPLOAD_MB || process.env.MAX_UPLOAD_MB || 1200) * 1024 * 1024 }
+});
+
 
 const ASSET_ROOT = process.env.ASSET_ROOT || '/site/lmi/assets';
 const ASSET_URL_PREFIX = process.env.ASSET_URL_PREFIX || '/lmi/assets';
@@ -480,7 +499,7 @@ async function runProcess_(cmd, args, opts = {}) {
 const VEHICLE_MODEL_ALLOWED_EXT = new Set([
   '.dae','.fbx','.obj','.mtl','.kn5',
   '.png','.jpg','.jpeg','.webp','.tga','.bmp','.dds',
-  '.json','.txt','.ini','.csv','.ai'
+  '.json','.jbeam','.txt','.ini','.csv','.ai'
 ]);
 
 async function walkVehicleSource_(sourceDir) {
@@ -509,8 +528,12 @@ async function walkVehicleSource_(sourceDir) {
   return files;
 }
 
-async function extractVehicle7z_(buffer, sourceDir, archiveFile) {
-  await fs.writeFile(archiveFile, buffer);
+async function extractVehicle7z_(archiveInput, sourceDir, archiveFile) {
+  if (Buffer.isBuffer(archiveInput)) {
+    await fs.writeFile(archiveFile, archiveInput);
+  } else {
+    await fs.copyFile(archiveInput, archiveFile);
+  }
   const sevenZip = process.env.SEVEN_ZIP_BIN || '7z';
   const out = await runProcess_(sevenZip, ['x', '-y', `-o${sourceDir}`, archiveFile], {
     cwd: path.dirname(archiveFile),
@@ -521,7 +544,7 @@ async function extractVehicle7z_(buffer, sourceDir, archiveFile) {
   }
 }
 
-async function extractVehicleZip_(buffer, vehicleId, originalName = 'source.zip') {
+async function extractVehicleZip_(archiveInput, vehicleId, originalName = 'source.zip') {
   const archiveExt = path.extname(originalName || '').toLowerCase();
   const safeId = safeVehicleAssetId_(vehicleId);
   const root = assetFullPath_(`vehicles/models/${safeId}`);
@@ -533,9 +556,10 @@ async function extractVehicleZip_(buffer, vehicleId, originalName = 'source.zip'
 
   let files = [];
   if (archiveExt === '.7z') {
-    await extractVehicle7z_(buffer, sourceDir, archiveFile);
+    await extractVehicle7z_(archiveInput, sourceDir, archiveFile);
     files = await walkVehicleSource_(sourceDir);
   } else {
+    const buffer = Buffer.isBuffer(archiveInput) ? archiveInput : await fs.readFile(archiveInput);
     const entries = readZipEntries_(buffer).filter(entry => !String(entry.name || '').endsWith('/'));
     if (entries.length > 1000) throw new Error('Vehicle model zip has too many files.');
     await fs.writeFile(archiveFile, buffer);
@@ -862,7 +886,7 @@ app.post('/api/files/write', express.text({ type: '*/*', limit: '2mb' }), async 
   }
 });
 
-app.post('/api/vehicles/model/upload', upload.single('file'), async (req, res) => {
+app.post('/api/vehicles/model/upload', vehicleUpload.single('file'), async (req, res) => {
   try {
     const admin = requireLmiAdmin_(req, res, 'Admin account required to upload vehicle model packs.');
     if (!admin) return;
@@ -873,7 +897,8 @@ app.post('/api/vehicles/model/upload', upload.single('file'), async (req, res) =
     }
 
     const vehicleId = req.body.vehicleId || req.body.vid || req.body.id || path.basename(req.file.originalname, modelPackExt);
-    const extracted = await extractVehicleZip_(req.file.buffer, vehicleId, req.file.originalname || 'source.zip');
+    const archiveInput = req.file.path || req.file.buffer;
+    const extracted = await extractVehicleZip_(archiveInput, vehicleId, req.file.originalname || 'source.zip');
     const finalized = await finalizeVehicleModelConversion_(extracted.safeId, extracted.sourceDir, extracted.root.full);
     const manifest = Object.assign({}, extracted.manifest, {
       conversion: finalized.conversion,
@@ -891,6 +916,10 @@ app.post('/api/vehicles/model/upload', upload.single('file'), async (req, res) =
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message || String(err) });
+  } finally {
+    if (req.file && req.file.path) {
+      await fs.rm(req.file.path, { force: true }).catch(() => {});
+    }
   }
 });
 

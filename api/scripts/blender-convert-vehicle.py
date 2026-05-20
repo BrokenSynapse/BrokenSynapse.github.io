@@ -36,6 +36,11 @@ def clean_key(value):
     return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
 
 
+def mesh_key(value):
+    name = re.sub(r"\.\d{3}$", "", str(value or ""))
+    return clean_key(name)
+
+
 def clamp01(value):
     try:
         return max(0.0, min(1.0, float(value)))
@@ -129,6 +134,73 @@ def load_material_hints(source_dir):
                     if cleaned:
                         hints[cleaned] = {"color": color, "source": os.path.relpath(full, source_dir)}
     return hints
+
+
+def load_beam_flexbody_names(source_dir):
+    names = set()
+    for base, _dirs, files in os.walk(source_dir):
+        for name in files:
+            if not name.lower().endswith(".jbeam"):
+                continue
+            full = os.path.join(base, name)
+            try:
+                with open(full, "r", encoding="utf-8", errors="ignore") as handle:
+                    lines = handle.readlines()
+            except Exception:
+                continue
+            inside = False
+            depth = 0
+            for line in lines:
+                stripped = re.sub(r"//.*$", "", line).strip()
+                if not inside and re.search(r"['\"]flexbodies['\"]\s*:", stripped):
+                    inside = True
+                    depth = stripped.count("[") - stripped.count("]")
+                    continue
+                if not inside:
+                    continue
+                depth += stripped.count("[") - stripped.count("]")
+                match = re.match(r"\[\s*['\"]([^'\"]+)['\"]", stripped)
+                if match:
+                    candidate = match.group(1).strip()
+                    if candidate and clean_key(candidate) != "mesh":
+                        names.add(mesh_key(candidate))
+                if depth <= 0 and "]" in stripped:
+                    inside = False
+    return names
+
+
+def filter_beam_visual_meshes(source_dir):
+    flexbodies = load_beam_flexbody_names(source_dir)
+    report = {
+        "flexbodyCount": len(flexbodies),
+        "removed": [],
+        "kept": []
+    }
+    if not flexbodies:
+        return report
+
+    mesh_objects = [obj for obj in bpy.context.scene.objects if obj.type == "MESH"]
+    matched = []
+    for obj in mesh_objects:
+        keys = {mesh_key(obj.name)}
+        if getattr(obj, "data", None):
+            keys.add(mesh_key(obj.data.name))
+        if any(key in flexbodies or any(flex in key or key in flex for flex in flexbodies) for key in keys if key):
+            matched.append(obj)
+
+    # If none of the imported object names line up with JBeam flexbodies, keep
+    # the import intact and report the missed hint rather than deleting the car.
+    if not matched:
+        report["missed"] = True
+        return report
+
+    for obj in mesh_objects:
+        if obj in matched:
+            report["kept"].append(obj.name)
+            continue
+        report["removed"].append(obj.name)
+        bpy.data.objects.remove(obj, do_unlink=True)
+    return report
 
 
 def is_too_dark(color):
@@ -363,6 +435,79 @@ def sanitize_materials(source_dir):
     return report
 
 
+def find_texture_by_basename(source_dir, basename):
+    if not basename:
+        return ""
+    wanted = basename.lower()
+    for base, _dirs, files in os.walk(source_dir):
+        for name in files:
+            if name.lower() == wanted:
+                return os.path.join(base, name)
+    return ""
+
+
+def relink_missing_images(source_dir):
+    report = []
+    for image in bpy.data.images:
+        path = bpy.path.abspath(image.filepath or "")
+        if path and os.path.exists(path):
+            continue
+        basename = os.path.basename(image.filepath or image.name or "")
+        found = find_texture_by_basename(source_dir, basename)
+        if not found:
+            continue
+        image.filepath = found
+        image.filepath_raw = found
+        try:
+            image.reload()
+        except Exception:
+            pass
+        report.append({"name": image.name, "path": os.path.relpath(found, source_dir)})
+    return report
+
+
+def prepare_export_images(source_dir):
+    report = []
+    export_dir = os.path.join(source_dir, "__lmi_export_textures")
+    supported = {".png", ".jpg", ".jpeg"}
+    for image in bpy.data.images:
+        if image.type != "IMAGE":
+            continue
+        src = bpy.path.abspath(image.filepath or "")
+        ext = os.path.splitext(src or image.name or "")[1].lower()
+        if ext in supported:
+            try:
+                if not image.packed_file:
+                    image.pack()
+            except Exception:
+                pass
+            continue
+        safe = re.sub(r"[^a-zA-Z0-9._-]+", "_", os.path.splitext(image.name or "texture")[0]).strip("_") or "texture"
+        out = os.path.join(export_dir, safe + ".png")
+        try:
+            os.makedirs(export_dir, exist_ok=True)
+            image.save_render(out)
+            image.filepath = out
+            image.filepath_raw = out
+            image.file_format = "PNG"
+            try:
+                image.pack()
+            except Exception:
+                pass
+            report.append({
+                "name": image.name,
+                "from": os.path.basename(src or image.name),
+                "to": os.path.relpath(out, source_dir)
+            })
+        except Exception as exc:
+            report.append({
+                "name": image.name,
+                "from": os.path.basename(src or image.name),
+                "error": str(exc)
+            })
+    return report
+
+
 def optimize_images(max_size):
     report = []
     if not max_size or max_size <= 0:
@@ -473,7 +618,10 @@ def main():
             elif ext == ".fbx":
                 result = bpy.ops.import_scene.fbx(filepath=model_file)
             elif ext == ".obj":
-                result = bpy.ops.import_scene.obj(filepath=model_file)
+                if hasattr(bpy.ops.wm, "obj_import"):
+                    result = bpy.ops.wm.obj_import(filepath=model_file)
+                else:
+                    result = bpy.ops.import_scene.obj(filepath=model_file)
             else:
                 result = None
             after = len(bpy.context.scene.objects)
@@ -490,9 +638,12 @@ def main():
 
     imported = [obj for obj in bpy.context.scene.objects if obj.type in {"MESH", "EMPTY"}]
     if not imported:
-        raise SystemExit("No mesh objects imported from .dae files. Import report: %s" % json.dumps(imported_reports))
+        raise SystemExit("No mesh objects imported from model files. Import report: %s" % json.dumps(imported_reports))
 
+    beam_filter_report = filter_beam_visual_meshes(source_dir)
+    relink_report = relink_missing_images(source_dir)
     material_report = sanitize_materials(source_dir)
+    export_image_report = prepare_export_images(source_dir)
     image_report = optimize_images(TEXTURE_MAX_SIZE)
     decimate_report = decimate_meshes(DECIMATE_RATIO, DECIMATE_MIN_FACES)
 
@@ -540,6 +691,11 @@ def main():
         "decimateSample": decimate_report[:80],
         "materialsSanitized": len(material_report),
         "materialSample": material_report[:80],
+        "beamFilter": beam_filter_report,
+        "imagesRelinked": len(relink_report),
+        "relinkSample": relink_report[:80],
+        "imagesPreparedForExport": len([item for item in export_image_report if "to" in item]),
+        "exportImageSample": export_image_report[:80],
         "textureMaxSize": TEXTURE_MAX_SIZE,
         "imagesOptimized": len([item for item in image_report if "to" in item]),
         "imageSample": image_report[:80],
