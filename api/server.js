@@ -633,6 +633,76 @@ async function findFirstFileByExt_(root, exts) {
   return walk(root);
 }
 
+async function findFilesByExt_(root, exts) {
+  const wanted = new Set(exts.map(x => String(x).toLowerCase()));
+  const out = [];
+  async function walk(dir) {
+    let entries = [];
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(full);
+        continue;
+      }
+      if (entry.isFile() && wanted.has(path.extname(entry.name).toLowerCase())) {
+        const stat = await fs.stat(full).catch(() => null);
+        out.push({ full, size: stat ? stat.size : 0 });
+      }
+    }
+  }
+  await walk(root);
+  return out;
+}
+
+function isRawViewerLodFile_(file) {
+  const name = path.basename(file).toLowerCase();
+  return /(^|[_\-.])lod([_\-.]|[a-z0-9])/.test(name) || /_lod_[a-z0-9]+/.test(name);
+}
+
+function isRawViewerHelperFile_(file) {
+  const name = path.basename(file).toLowerCase();
+  return /collider|collision|shadow/.test(name) || isRawViewerLodFile_(file);
+}
+
+async function rawVehicleSources_(safeId, sourceDir) {
+  const found = await findFilesByExt_(sourceDir, ['.dae', '.obj']);
+  const raw = found
+    .filter(item => !isRawViewerHelperFile_(item.full))
+    .map(item => {
+      const rel = path.relative(sourceDir, item.full).replace(/\\/g, '/');
+      const type = path.extname(item.full).toLowerCase().replace('.', '');
+      return {
+        type,
+        path: assetWebPath_(`vehicles/models/${safeId}/source/${rel}`),
+        relPath: rel,
+        size: item.size
+      };
+    });
+
+  const dae = raw.filter(item => item.type === 'dae').sort((a, b) => b.size - a.size);
+  const obj = raw.filter(item => item.type === 'obj').sort((a, b) => b.size - a.size);
+  const primaryObj = obj[0] || null;
+  let primaryObjMtl = '';
+  if (primaryObj) {
+    const mtlRel = primaryObj.relPath.replace(/\.obj$/i, '.mtl');
+    if (await fileExists_(path.join(sourceDir, mtlRel))) {
+      primaryObjMtl = assetWebPath_(`vehicles/models/${safeId}/source/${mtlRel}`);
+    }
+  }
+
+  return {
+    preferred: dae.length ? 'dae' : (primaryObj ? 'obj' : ''),
+    dae: dae.slice(0, 4),
+    obj: primaryObj ? Object.assign({}, primaryObj, { mtl: primaryObjMtl }) : null
+  };
+}
+
 async function finalizeVehicleModelConversion_(safeId, sourceDir, rootFull) {
   const outputFile = path.join(rootFull, 'model.glb');
   const converted = await convertVehicleModel_(sourceDir, outputFile);
@@ -652,8 +722,10 @@ async function finalizeVehicleModelConversion_(safeId, sourceDir, rootFull) {
   }
 
   const ok = converted.ok && !!glbFile;
+  const rawSources = await rawVehicleSources_(safeId, sourceDir);
   return {
     glb: glbFile ? assetWebPath_(`vehicles/models/${safeId}/model.glb`) : '',
+    rawSources,
     conversion: {
       status: ok ? 'converted' : 'stored-source',
       ok,
@@ -902,7 +974,8 @@ app.post('/api/vehicles/model/upload', vehicleUpload.single('file'), async (req,
     const finalized = await finalizeVehicleModelConversion_(extracted.safeId, extracted.sourceDir, extracted.root.full);
     const manifest = Object.assign({}, extracted.manifest, {
       conversion: finalized.conversion,
-      glb: finalized.glb
+      glb: finalized.glb,
+      rawSources: finalized.rawSources
     });
     await fs.writeFile(path.join(extracted.root.full, 'manifest.json'), JSON.stringify(manifest, null, 2));
     res.json({
@@ -912,6 +985,7 @@ app.post('/api/vehicles/model/upload', vehicleUpload.single('file'), async (req,
       sourceZip: manifest.sourceZip,
       sourceDir: manifest.sourceDir,
       glb: manifest.glb,
+      rawSources: manifest.rawSources,
       conversion: manifest.conversion
     });
   } catch (err) {
@@ -953,6 +1027,7 @@ app.post('/api/vehicles/model/convert', express.json({ limit: '2mb' }), async (r
       sourceDir: existing.sourceDir || assetWebPath_(`vehicles/models/${safeId}/source`),
       updatedAt: now_(),
       glb: finalized.glb,
+      rawSources: finalized.rawSources,
       conversion: finalized.conversion
     });
     await fs.writeFile(manifestFile, JSON.stringify(manifest, null, 2));
@@ -961,6 +1036,7 @@ app.post('/api/vehicles/model/convert', express.json({ limit: '2mb' }), async (r
       vehicleId: safeId,
       manifest: assetWebPath_(`vehicles/models/${safeId}/manifest.json`),
       glb: manifest.glb,
+      rawSources: manifest.rawSources,
       conversion: manifest.conversion
     });
   } catch (err) {
