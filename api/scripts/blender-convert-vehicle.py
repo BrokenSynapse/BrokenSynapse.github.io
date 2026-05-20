@@ -6,6 +6,7 @@ import bpy
 
 
 COLOR_HEX_RE = re.compile(r"0x([0-9a-fA-F]{8})")
+HASH_COLOR_RE = re.compile(r"#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})")
 TEXTURE_MAX_SIZE = int(os.environ.get("VEHICLE_TEXTURE_MAX", "1024") or "1024")
 DECIMATE_RATIO = float(os.environ.get("VEHICLE_DECIMATE_RATIO", "1.0") or "1.0")
 DECIMATE_MIN_FACES = int(os.environ.get("VEHICLE_DECIMATE_MIN_FACES", "25000") or "25000")
@@ -67,7 +68,16 @@ def rgba_from_array(value):
 
 
 def rgba_from_hex_text(text):
-    match = COLOR_HEX_RE.search(str(text or ""))
+    text = str(text or "")
+    hash_match = HASH_COLOR_RE.search(text)
+    if hash_match:
+        raw = hash_match.group(1)
+        if len(raw) == 8:
+            a, r, g, b = raw[0:2], raw[2:4], raw[4:6], raw[6:8]
+        else:
+            r, g, b, a = raw[0:2], raw[2:4], raw[4:6], "ff"
+        return (int(r, 16) / 255.0, int(g, 16) / 255.0, int(b, 16) / 255.0, int(a, 16) / 255.0)
+    match = COLOR_HEX_RE.search(text)
     if not match:
         return None
     raw = match.group(1)
@@ -133,6 +143,45 @@ def load_material_hints(source_dir):
                     cleaned = clean_key(material_name)
                     if cleaned:
                         hints[cleaned] = {"color": color, "source": os.path.relpath(full, source_dir)}
+    hints.update(load_assetto_skin_hints(source_dir))
+    return hints
+
+
+def skin_sort_key(path):
+    lowered = path.lower()
+    name = os.path.basename(path).lower()
+    if "raven" in name or "black" in name:
+        return (0, len(path), path)
+    if "wimbledon" in name or "white" in name:
+        return (2, len(path), path)
+    return (1, len(path), path)
+
+
+def load_assetto_skin_hints(source_dir):
+    hints = {}
+    skin_files = []
+    for base, _dirs, files in os.walk(source_dir):
+        if os.path.basename(os.path.dirname(base)).lower() != "skins":
+            continue
+        for name in files:
+            if name.lower() in {"cm_skin.json", "ui_skin.json"}:
+                skin_files.append(os.path.join(base, name))
+    skin_files.sort(key=skin_sort_key)
+    for full in skin_files:
+        try:
+            with open(full, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+        except Exception:
+            continue
+        paint = data.get("carPaint") if isinstance(data, dict) else None
+        color = color_from_value(paint) if paint else None
+        if not color:
+            color = color_from_value(data)
+        if color:
+            rel = os.path.relpath(full, source_dir)
+            for key in ("extcarpaint", "ext_car_paint", "carpaint", "paint", "body"):
+                hints[clean_key(key)] = {"color": color, "source": rel}
+            break
     return hints
 
 
@@ -220,13 +269,13 @@ def fallback_material(name):
     elif any(token in lowered for token in ("tire", "tyre", "rubber")):
         color = (0.028, 0.026, 0.024, 1.0)
         roughness = 0.82
-    elif any(token in lowered for token in ("seat", "leather", "fabric", "carpet", "cloth", "alcantara", "interior", "int_")):
-        color = (0.18, 0.16, 0.13, 1.0)
-        roughness = 0.74
     elif any(token in lowered for token in ("chrome", "metal", "exhaust", "pipe", "axle", "shaft", "hub")):
         color = (0.62, 0.61, 0.57, 1.0)
         metallic = 0.75
         roughness = 0.31
+    elif any(token in lowered for token in ("seat", "leather", "fabric", "carpet", "cloth", "alcantara", "interior", "int_")):
+        color = (0.045, 0.043, 0.040, 1.0)
+        roughness = 0.74
     elif any(token in lowered for token in ("light", "lamp", "reflector")):
         color = (1.0, 0.90, 0.64, 1.0)
         roughness = 0.18
@@ -301,14 +350,14 @@ def material_kind(name):
         return "glass"
     if any(token in lowered for token in ("tire", "tyre", "rubber")):
         return "rubber"
-    if any(token in lowered for token in ("seat", "leather", "fabric", "carpet", "cloth", "alcantara", "interior", "int_")):
-        return "interior"
     if any(token in lowered for token in ("chrome", "polished", "metal", "exhaust", "pipe", "axle", "shaft", "hub", "rim")):
         return "metal"
     if any(token in lowered for token in ("light", "lamp", "reflector")):
         return "lamp"
     if any(token in lowered for token in ("paint", "body", "car_paint", "ext_car")):
         return "paint"
+    if any(token in lowered for token in ("seat", "leather", "fabric", "carpet", "cloth", "alcantara", "interior", "int_")):
+        return "interior"
     return "general"
 
 
@@ -326,9 +375,8 @@ def should_keep_interior_texture(name):
     return any(token in lowered for token in (
         "badge", "logo", "emblem", "plate", "gauge", "dash", "sticker",
         "number", "dial", "screen", "label", "button", "switch", "decal",
-        "leather", "fabric", "carpet", "cloth", "alcantara", "stitch",
-        "wood", "radio", "cassette", "odometer", "pedal", "key", "knob",
-        "plastic", "ceiling", "seatbelt", "reflector", "door"
+        "radio", "cassette", "odometer", "pedal", "key", "knob",
+        "reflector"
     ))
 
 
@@ -354,9 +402,7 @@ def should_strip_base_texture(name, texture_paths, kind):
         return False
     if kind == "interior" and should_keep_interior_texture(lowered):
         return False
-    if kind == "interior" and any(token in joined for token in (
-        "ao_", "bodyflat", "common_vehicles_exterior", "metal_detail", "macrovariation"
-    )):
+    if kind == "interior":
         return True
     if any(token in joined for token in (
         "livery", "ao_body", "body_map", "macrovariation"
