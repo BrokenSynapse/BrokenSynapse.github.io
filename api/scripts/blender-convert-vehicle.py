@@ -7,6 +7,8 @@ import bpy
 
 COLOR_HEX_RE = re.compile(r"0x([0-9a-fA-F]{8})")
 TEXTURE_MAX_SIZE = int(os.environ.get("VEHICLE_TEXTURE_MAX", "1024") or "1024")
+DECIMATE_RATIO = float(os.environ.get("VEHICLE_DECIMATE_RATIO", "1.0") or "1.0")
+DECIMATE_MIN_FACES = int(os.environ.get("VEHICLE_DECIMATE_MIN_FACES", "25000") or "25000")
 
 
 def find_model_files(root):
@@ -146,6 +148,9 @@ def fallback_material(name):
     elif any(token in lowered for token in ("tire", "tyre", "rubber")):
         color = (0.028, 0.026, 0.024, 1.0)
         roughness = 0.82
+    elif any(token in lowered for token in ("seat", "leather", "fabric", "carpet", "cloth", "alcantara", "interior", "int_")):
+        color = (0.18, 0.16, 0.13, 1.0)
+        roughness = 0.74
     elif any(token in lowered for token in ("chrome", "metal", "exhaust", "pipe", "axle", "shaft", "hub")):
         color = (0.62, 0.61, 0.57, 1.0)
         metallic = 0.75
@@ -224,6 +229,8 @@ def material_kind(name):
         return "glass"
     if any(token in lowered for token in ("tire", "tyre", "rubber")):
         return "rubber"
+    if any(token in lowered for token in ("seat", "leather", "fabric", "carpet", "cloth", "alcantara", "interior", "int_")):
+        return "interior"
     if any(token in lowered for token in ("chrome", "polished", "metal", "exhaust", "pipe", "axle", "shaft", "hub", "rim")):
         return "metal"
     if any(token in lowered for token in ("light", "lamp", "reflector")):
@@ -238,8 +245,15 @@ def should_keep_base_texture(name):
     return any(token in lowered for token in (
         "badge", "logo", "emblem", "plate", "gauge", "dash", "sticker",
         "number", "dial", "screen", "light", "lamp", "reflector", "decal",
-        "trim", "grille", "louver", "spoiler", "splitter", "chrome",
-        "fabric", "leather", "carpet", "seat", "interior", "int_"
+        "trim", "grille", "louver", "spoiler", "splitter", "chrome"
+    ))
+
+
+def should_keep_interior_texture(name):
+    lowered = str(name or "").lower()
+    return any(token in lowered for token in (
+        "badge", "logo", "emblem", "plate", "gauge", "dash", "sticker",
+        "number", "dial", "screen", "label", "button", "switch", "decal"
     ))
 
 
@@ -254,6 +268,8 @@ def should_strip_base_texture(name, texture_paths, kind):
     lowered = str(name or "").lower()
     joined = " ".join(str(path or "").lower() for path in texture_paths)
     if kind == "paint":
+        return True
+    if kind == "interior" and not should_keep_interior_texture(lowered):
         return True
     if ("/skins/" in joined or "\\skins\\" in joined) and not should_keep_livery_texture(lowered):
         return True
@@ -309,6 +325,9 @@ def rebuild_material(mat, hints):
     elif kind == "paint":
         metallic = max(metallic, 0.28)
         roughness = min(roughness, 0.36)
+    elif kind == "interior":
+        metallic = 0.0
+        roughness = max(roughness, 0.72)
     elif kind == "metal":
         metallic = max(metallic, 0.78)
         roughness = min(roughness, 0.26)
@@ -376,6 +395,52 @@ def optimize_images(max_size):
     return report
 
 
+def mesh_face_count(obj):
+    if not obj or obj.type != "MESH" or not obj.data:
+        return 0
+    try:
+        return len(obj.data.polygons)
+    except Exception:
+        return 0
+
+
+def decimate_meshes(ratio, min_faces):
+    report = []
+    if not ratio or ratio >= 0.999 or ratio <= 0:
+        return report
+    bpy.ops.object.select_all(action="DESELECT")
+    for obj in [item for item in bpy.context.scene.objects if item.type == "MESH"]:
+        before_faces = mesh_face_count(obj)
+        if before_faces < min_faces:
+            continue
+        try:
+            bpy.context.view_layer.objects.active = obj
+            obj.select_set(True)
+            modifier = obj.modifiers.new(name="LMI_showroom_decimate", type="DECIMATE")
+            modifier.ratio = ratio
+            modifier.use_collapse_triangulate = True
+            bpy.ops.object.modifier_apply(modifier=modifier.name)
+            after_faces = mesh_face_count(obj)
+            report.append({
+                "name": obj.name,
+                "fromFaces": before_faces,
+                "toFaces": after_faces,
+                "ratio": ratio
+            })
+            obj.select_set(False)
+        except Exception as exc:
+            report.append({
+                "name": obj.name,
+                "fromFaces": before_faces,
+                "error": str(exc)
+            })
+            try:
+                obj.select_set(False)
+            except Exception:
+                pass
+    return report
+
+
 def main():
     args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     if len(args) < 2:
@@ -429,11 +494,13 @@ def main():
 
     material_report = sanitize_materials(source_dir)
     image_report = optimize_images(TEXTURE_MAX_SIZE)
+    decimate_report = decimate_meshes(DECIMATE_RATIO, DECIMATE_MIN_FACES)
 
     for obj in bpy.context.scene.objects:
         obj.select_set(obj.type == "MESH")
 
     meshes = [obj for obj in bpy.context.scene.objects if obj.type == "MESH"]
+    total_faces = sum(mesh_face_count(obj) for obj in meshes)
     if meshes:
         bpy.context.view_layer.objects.active = meshes[0]
     mesh_names = [obj.name for obj in meshes]
@@ -465,8 +532,12 @@ def main():
         "objectsBeforeImport": before_count,
         "objectsAfterImport": len(bpy.context.scene.objects),
         "meshObjects": len(meshes),
+        "totalFaces": total_faces,
         "meshSample": mesh_names[:80],
         "wheelLikeMeshes": wheel_like[:80],
+        "decimateRatio": DECIMATE_RATIO,
+        "meshesDecimated": len([item for item in decimate_report if "toFaces" in item]),
+        "decimateSample": decimate_report[:80],
         "materialsSanitized": len(material_report),
         "materialSample": material_report[:80],
         "textureMaxSize": TEXTURE_MAX_SIZE,
