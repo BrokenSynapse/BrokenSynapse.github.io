@@ -8,5 +8,11 @@
     @lmiCode path /lmi/*.html /lmi/desktop/*.html /lmi/modules/*.html /lmi/scripts/*.js /lmi/module-manifest.json
     header @lmiCode Cache-Control "no-store, max-age=0"
 
+    @vehicleModelManifests path /lmi/assets/vehicles/models/*/manifest.json
+    header @vehicleModelManifests Cache-Control "no-store, max-age=0"
+
+    @vehicleModelBinaries path /lmi/assets/vehicles/models/*/model.glb
+    header @vehicleModelBinaries Cache-Control "public, max-age=31536000, immutable"
+
     file_server
 }
