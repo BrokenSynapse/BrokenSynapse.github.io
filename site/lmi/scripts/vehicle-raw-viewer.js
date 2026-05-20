@@ -68,6 +68,7 @@ function tuneMaterials(THREE, object) {
     for (const mat of mats) {
       const name = String(mat.name || '').toLowerCase();
       mat.side = THREE.DoubleSide;
+      if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace;
       if (/glass|window|windscreen|windshield/.test(name)) {
         mat.transparent = true;
         mat.opacity = Math.min(mat.opacity || 0.45, 0.42);
@@ -85,36 +86,61 @@ function tuneMaterials(THREE, object) {
   });
 }
 
+function emitProgress(opts, text) {
+  if (typeof opts.onProgress === 'function') opts.onProgress(text);
+}
+
 async function loadDaeScene(THREE, manager, item) {
   const loader = new rawViewerModules.ColladaLoader(manager);
   const collada = await loader.loadAsync(normalizeUrl(item.path));
   return collada.scene;
 }
 
-async function loadObjScene(THREE, manager, item) {
+async function loadObjScene(THREE, manager, item, opts) {
   const objLoader = new rawViewerModules.OBJLoader(manager);
   if (item.mtl) {
+    emitProgress(opts, 'Loading material map...');
     const mtlLoader = new rawViewerModules.MTLLoader(manager);
     mtlLoader.setPath(basePath(item.mtl));
     const materials = await mtlLoader.loadAsync(normalizeUrl(item.mtl).split('/').pop());
     materials.preload();
     objLoader.setMaterials(materials);
   }
+  emitProgress(opts, 'Streaming KN5 mesh...');
   objLoader.setPath(basePath(item.path));
   return objLoader.loadAsync(normalizeUrl(item.path).split('/').pop());
 }
 
-async function loadRawSource(THREE, manager, source) {
-  const group = new THREE.Group();
-  if (source?.preferred === 'dae' && Array.isArray(source.dae)) {
-    for (const item of source.dae.slice(0, 4)) {
-      group.add(await loadDaeScene(THREE, manager, item));
+async function streamRawSource(THREE, manager, source, root, controls, camera, state, opts) {
+  if (source?.preferred === 'dae' && Array.isArray(source.dae) && source.dae.length) {
+    const items = source.dae.slice(0, 4);
+    for (let i = 0; i < items.length; i++) {
+      if (state.disposed) return;
+      emitProgress(opts, `Loading DAE ${i + 1}/${items.length}...`);
+      const scene = await loadDaeScene(THREE, manager, items[i]);
+      if (state.disposed) {
+        disposeObject(scene);
+        return;
+      }
+      tuneMaterials(THREE, scene);
+      root.add(scene);
+      fitCamera(THREE, camera, controls, root);
+      emitProgress(opts, i === items.length - 1 ? 'Raw DAE ready.' : `Showing DAE ${i + 1}/${items.length}...`);
+      await new Promise(resolve => requestAnimationFrame(resolve));
     }
-    return group;
+    return;
   }
   if (source?.obj) {
-    group.add(await loadObjScene(THREE, manager, source.obj));
-    return group;
+    const object = await loadObjScene(THREE, manager, source.obj, opts);
+    if (state.disposed) {
+      disposeObject(object);
+      return;
+    }
+    tuneMaterials(THREE, object);
+    root.add(object);
+    fitCamera(THREE, camera, controls, root);
+    emitProgress(opts, 'Raw KN5 source ready.');
+    return;
   }
   throw new Error('No raw vehicle source available.');
 }
@@ -125,8 +151,14 @@ async function mountRawVehicleViewer(mount, source, opts = {}) {
   mount.__rawVehicleViewer?.dispose?.();
   mount.innerHTML = '';
   mount.style.position = 'relative';
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+
+  const renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    alpha: true,
+    powerPreference: 'high-performance',
+    preserveDrawingBuffer: false
+  });
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, opts.pixelRatio || 1.75));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -135,30 +167,20 @@ async function mountRawVehicleViewer(mount, source, opts = {}) {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(30, 1, 0.01, 10000);
   const controls = new OrbitControls(camera, renderer.domElement);
+  const root = new THREE.Group();
+  const state = { disposed: false, visible: true };
   controls.enableDamping = true;
   controls.autoRotate = opts.autoRotate !== false;
   controls.autoRotateSpeed = 0.65;
+  camera.position.set(4, 2, 6);
+  controls.target.set(0, 0, 0);
+  scene.add(root);
 
   scene.add(new THREE.HemisphereLight(0xffffff, 0x6f7f96, 2.2));
   const key = new THREE.DirectionalLight(0xffffff, 2.4);
   key.position.set(5, 8, 6);
   key.castShadow = true;
   scene.add(key);
-
-  const manager = new THREE.LoadingManager();
-  manager.addHandler(/\.dds$/i, new DDSLoader());
-  manager.setURLModifier(url => normalizeUrl(url));
-  let object;
-  try {
-    object = await loadRawSource(THREE, manager, source);
-  } catch (err) {
-    renderer.dispose();
-    renderer.domElement.remove();
-    throw err;
-  }
-  tuneMaterials(THREE, object);
-  scene.add(object);
-  fitCamera(THREE, camera, controls, object);
 
   let frame = 0;
   const resize = () => {
@@ -173,8 +195,15 @@ async function mountRawVehicleViewer(mount, source, opts = {}) {
   ro.observe(mount);
   resize();
 
+  const io = 'IntersectionObserver' in window ? new IntersectionObserver(entries => {
+    state.visible = entries.some(entry => entry.isIntersecting);
+  }) : null;
+  io?.observe(mount);
+
   function animate() {
+    if (state.disposed) return;
     frame = requestAnimationFrame(animate);
+    if (!state.visible) return;
     controls.update();
     renderer.render(scene, camera);
   }
@@ -182,14 +211,27 @@ async function mountRawVehicleViewer(mount, source, opts = {}) {
 
   const api = {
     dispose() {
+      state.disposed = true;
       cancelAnimationFrame(frame);
       ro.disconnect();
-      disposeObject(object);
+      io?.disconnect();
+      disposeObject(root);
       renderer.dispose();
       renderer.domElement.remove();
     }
   };
   mount.__rawVehicleViewer = api;
+
+  const manager = new THREE.LoadingManager();
+  manager.addHandler(/\.dds$/i, new DDSLoader());
+  manager.setURLModifier(url => normalizeUrl(url));
+  emitProgress(opts, 'Preparing hardware viewer...');
+  try {
+    await streamRawSource(THREE, manager, source, root, controls, camera, state, opts);
+  } catch (err) {
+    if (!state.disposed) api.dispose();
+    throw err;
+  }
   return api;
 }
 
