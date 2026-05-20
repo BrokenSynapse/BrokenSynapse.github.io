@@ -254,6 +254,8 @@ def should_strip_base_texture(name, texture_paths, kind):
     joined = " ".join(str(path or "").lower() for path in texture_paths)
     if kind == "paint":
         return True
+    if ("/skins/" in joined or "\\skins\\" in joined) and not should_keep_livery_texture(lowered):
+        return True
     if "livery" in joined and not should_keep_livery_texture(lowered):
         return True
     if should_keep_base_texture(lowered):
