@@ -325,7 +325,10 @@ def should_keep_interior_texture(name):
     lowered = str(name or "").lower()
     return any(token in lowered for token in (
         "badge", "logo", "emblem", "plate", "gauge", "dash", "sticker",
-        "number", "dial", "screen", "label", "button", "switch", "decal"
+        "number", "dial", "screen", "label", "button", "switch", "decal",
+        "leather", "fabric", "carpet", "cloth", "alcantara", "stitch",
+        "wood", "radio", "cassette", "odometer", "pedal", "key", "knob",
+        "plastic", "ceiling", "seatbelt", "reflector", "door"
     ))
 
 
@@ -341,7 +344,7 @@ def should_strip_base_texture(name, texture_paths, kind):
     joined = " ".join(str(path or "").lower() for path in texture_paths)
     if kind == "paint":
         return True
-    if kind == "interior" and not should_keep_interior_texture(lowered):
+    if any(token in joined for token in ("normal", "_nm", "roughness", "rbgmask", "shadow", "null.dds")):
         return True
     if ("/skins/" in joined or "\\skins\\" in joined) and not should_keep_livery_texture(lowered):
         return True
@@ -349,7 +352,11 @@ def should_strip_base_texture(name, texture_paths, kind):
         return True
     if should_keep_base_texture(lowered):
         return False
-    if any(token in joined for token in ("normal", "_nm", "roughness", "rbgmask", "shadow")):
+    if kind == "interior" and should_keep_interior_texture(lowered):
+        return False
+    if kind == "interior" and any(token in joined for token in (
+        "ao_", "bodyflat", "common_vehicles_exterior", "metal_detail", "macrovariation"
+    )):
         return True
     if any(token in joined for token in (
         "livery", "ao_body", "body_map", "macrovariation"
@@ -435,6 +442,32 @@ def sanitize_materials(source_dir):
     return report
 
 
+def linked_material_images():
+    images = set()
+    for mat in bpy.data.materials:
+        if not mat.use_nodes or not mat.node_tree:
+            continue
+        for node in mat.node_tree.nodes:
+            if node.type != "TEX_IMAGE" or not getattr(node, "image", None):
+                continue
+            if any(output.links for output in node.outputs):
+                images.add(node.image)
+    return images
+
+
+def purge_unlinked_images(used_images):
+    report = []
+    for image in list(bpy.data.images):
+        if image in used_images:
+            continue
+        report.append(image.name)
+        try:
+            bpy.data.images.remove(image)
+        except Exception:
+            pass
+    return report
+
+
 def find_texture_by_basename(source_dir, basename):
     if not basename:
         return ""
@@ -466,11 +499,11 @@ def relink_missing_images(source_dir):
     return report
 
 
-def prepare_export_images(source_dir):
+def prepare_export_images(source_dir, used_images):
     report = []
     export_dir = os.path.join(source_dir, "__lmi_export_textures")
     supported = {".png", ".jpg", ".jpeg"}
-    for image in bpy.data.images:
+    for image in list(used_images):
         if image.type != "IMAGE":
             continue
         src = bpy.path.abspath(image.filepath or "")
@@ -508,11 +541,11 @@ def prepare_export_images(source_dir):
     return report
 
 
-def optimize_images(max_size):
+def optimize_images(max_size, used_images):
     report = []
     if not max_size or max_size <= 0:
         return report
-    for image in bpy.data.images:
+    for image in list(used_images):
         try:
             width, height = int(image.size[0]), int(image.size[1])
         except Exception:
@@ -643,8 +676,10 @@ def main():
     beam_filter_report = filter_beam_visual_meshes(source_dir)
     relink_report = relink_missing_images(source_dir)
     material_report = sanitize_materials(source_dir)
-    export_image_report = prepare_export_images(source_dir)
-    image_report = optimize_images(TEXTURE_MAX_SIZE)
+    used_images = linked_material_images()
+    purged_image_report = purge_unlinked_images(used_images)
+    export_image_report = prepare_export_images(source_dir, used_images)
+    image_report = optimize_images(TEXTURE_MAX_SIZE, used_images)
     decimate_report = decimate_meshes(DECIMATE_RATIO, DECIMATE_MIN_FACES)
 
     for obj in bpy.context.scene.objects:
@@ -694,6 +729,9 @@ def main():
         "beamFilter": beam_filter_report,
         "imagesRelinked": len(relink_report),
         "relinkSample": relink_report[:80],
+        "imagesUsedByMaterials": len(used_images),
+        "imagesPurged": len(purged_image_report),
+        "purgedImageSample": purged_image_report[:80],
         "imagesPreparedForExport": len([item for item in export_image_report if "to" in item]),
         "exportImageSample": export_image_report[:80],
         "textureMaxSize": TEXTURE_MAX_SIZE,
