@@ -1,3 +1,7 @@
+pub mod capabilities;
+pub mod opcodes;
+pub mod packet;
+
 use serde::Serialize;
 use sqlx::SqlitePool;
 use std::time::{SystemTime, UNIX_EPOCH};

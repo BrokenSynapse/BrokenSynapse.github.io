@@ -53,6 +53,19 @@ Available endpoints:
 
 `/lmi` continues to be the production app and should be migrated module by module only after compatibility contracts are clear.
 
+## LMI Bus
+
+LMI-R modules communicate through `ModuleContext`, backed by the frontend `LmiBus`. Modules should not call `fetch()` for normal app data, import the bus directly, or use per-module bridge scripts. The initial bus supports packets, local/session state, persisted state through `/api-r/packet`, pub/sub events, module requests, app actions, and debug inspection.
+
+Current stub proof points:
+
+- `Settings.LMX` writes and reloads `settings.demo.message` through `ctx.setState(..., { persist: true })`.
+- `Sift.LMX` publishes `asset:selected`.
+- `Fleetline.LMX` receives `asset:selected` without importing Sift.
+- `DataForge.LMX` requests a bus debug snapshot through `ctx.callAction('debug.bus')`.
+
+The Rust backend remains generic: it accepts packets, logs packets to `event_log`, and persists compact state in `entity` plus `entity_state`.
+
 ## Compact Database Direction
 
 The new schema uses integer IDs and compact dictionaries instead of repeating strings in every row. Entity state payloads are stored as BLOBs with a codec marker, while debug endpoints expose JSON views during development. MessagePack or CBOR codecs are reserved but not required for this first slice.

@@ -1,4 +1,6 @@
-use axum::{extract::State, routing::get, Json, Router};
+pub mod packet;
+
+use axum::{extract::State, routing::{get, post}, Json, Router};
 use serde::Serialize;
 
 use crate::{core, db, storage};
@@ -6,6 +8,9 @@ use crate::{core, db, storage};
 pub fn router() -> Router<core::AppState> {
     Router::new()
         .route("/status", get(status))
+        .route("/packet", post(packet::packet))
+        .route("/packet/batch", post(packet::packet_batch))
+        .route("/debug/bus", get(packet::debug_bus))
         .route("/debug/schema", get(debug_schema))
         .route("/debug/entities", get(debug_entities))
 }
@@ -33,7 +38,7 @@ async fn debug_entities(
 }
 
 #[derive(Debug)]
-struct ApiError(anyhow::Error);
+pub struct ApiError(anyhow::Error);
 
 impl From<anyhow::Error> for ApiError {
     fn from(error: anyhow::Error) -> Self {

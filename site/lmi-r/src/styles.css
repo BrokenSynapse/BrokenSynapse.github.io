@@ -172,13 +172,66 @@ h1 {
   color: #cbd8d5;
 }
 
+.module-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.module-card {
+  min-height: 190px;
+  border: 1px solid rgba(237, 247, 244, 0.13);
+  background: rgba(5, 6, 8, 0.66);
+  border-radius: 6px;
+  padding: 14px;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.module-card.wide {
+  grid-column: 1 / -1;
+}
+
+.module-card h3,
+.module-card p {
+  margin-bottom: 0;
+}
+
+.module-card p {
+  color: #b8c9c5;
+}
+
+.module-card button {
+  justify-self: start;
+  border: 1px solid rgba(69, 240, 214, 0.54);
+  border-radius: 6px;
+  background: rgba(69, 240, 214, 0.1);
+  color: #edf7f4;
+  padding: 9px 11px;
+  cursor: pointer;
+}
+
+.module-card pre {
+  max-height: 260px;
+  overflow: auto;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid rgba(237, 247, 244, 0.1);
+  background: rgba(0, 0, 0, 0.24);
+  border-radius: 6px;
+  color: #dce9e6;
+}
+
 .fatal {
   padding: 24px;
 }
 
 @media (max-width: 860px) {
   .workspace,
-  .status-grid {
+  .status-grid,
+  .module-grid {
     grid-template-columns: 1fr;
   }
 

@@ -1,3 +1,5 @@
+pub mod event_log;
+
 use serde::Serialize;
 use sqlx::{Row, SqlitePool};
 
