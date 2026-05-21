@@ -755,6 +755,31 @@ async function deleteVehicleSourceArchives_(rootFull) {
   return deleted;
 }
 
+async function finalizeVehicleUploadArchive_(archiveInput, vehicleId, originalName) {
+  const extracted = await extractVehicleZip_(archiveInput, vehicleId, originalName || 'source.zip');
+  const finalized = await finalizeVehicleModelConversion_(extracted.safeId, extracted.sourceDir, extracted.root.full);
+  const deletedSourceArchives = finalized.conversion.ok ? await deleteVehicleSourceArchives_(extracted.root.full) : [];
+  const manifest = Object.assign({}, extracted.manifest, {
+    conversion: finalized.conversion,
+    glb: finalized.glb,
+    rawSources: finalized.rawSources,
+    sourceZip: deletedSourceArchives.length ? '' : extracted.manifest.sourceZip,
+    sourceArchiveDeleted: deletedSourceArchives.length ? now_() : ''
+  });
+  await fs.writeFile(path.join(extracted.root.full, 'manifest.json'), JSON.stringify(manifest, null, 2));
+  return {
+    ok: true,
+    vehicleId: extracted.safeId,
+    manifest: assetWebPath_(`vehicles/models/${extracted.safeId}/manifest.json`),
+    sourceZip: manifest.sourceZip,
+    sourceArchiveDeleted: manifest.sourceArchiveDeleted,
+    sourceDir: manifest.sourceDir,
+    glb: manifest.glb,
+    rawSources: manifest.rawSources,
+    conversion: manifest.conversion
+  };
+}
+
 app.get('/api/files/assets', async (req, res) => {
   try {
     await fs.mkdir(ASSET_ROOT, { recursive: true });
@@ -984,34 +1009,64 @@ app.post('/api/vehicles/model/upload', vehicleUpload.single('file'), async (req,
 
     const vehicleId = req.body.vehicleId || req.body.vid || req.body.id || path.basename(req.file.originalname, modelPackExt);
     const archiveInput = req.file.path || req.file.buffer;
-    const extracted = await extractVehicleZip_(archiveInput, vehicleId, req.file.originalname || 'source.zip');
-    const finalized = await finalizeVehicleModelConversion_(extracted.safeId, extracted.sourceDir, extracted.root.full);
-    const deletedSourceArchives = finalized.conversion.ok ? await deleteVehicleSourceArchives_(extracted.root.full) : [];
-    const manifest = Object.assign({}, extracted.manifest, {
-      conversion: finalized.conversion,
-      glb: finalized.glb,
-      rawSources: finalized.rawSources,
-      sourceZip: deletedSourceArchives.length ? '' : extracted.manifest.sourceZip,
-      sourceArchiveDeleted: deletedSourceArchives.length ? now_() : ''
-    });
-    await fs.writeFile(path.join(extracted.root.full, 'manifest.json'), JSON.stringify(manifest, null, 2));
-    res.json({
-      ok: true,
-      vehicleId: extracted.safeId,
-      manifest: assetWebPath_(`vehicles/models/${extracted.safeId}/manifest.json`),
-      sourceZip: manifest.sourceZip,
-      sourceArchiveDeleted: manifest.sourceArchiveDeleted,
-      sourceDir: manifest.sourceDir,
-      glb: manifest.glb,
-      rawSources: manifest.rawSources,
-      conversion: manifest.conversion
-    });
+    res.json(await finalizeVehicleUploadArchive_(archiveInput, vehicleId, req.file.originalname || 'source.zip'));
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message || String(err) });
   } finally {
     if (req.file && req.file.path) {
       await fs.rm(req.file.path, { force: true }).catch(() => {});
     }
+  }
+});
+
+app.post('/api/vehicles/model/upload-chunk', express.raw({ type: 'application/octet-stream', limit: '8mb' }), async (req, res) => {
+  let sessionDir = '';
+  let assembledFile = '';
+  try {
+    const admin = requireLmiAdmin_(req, res, 'Admin account required to upload vehicle model packs.');
+    if (!admin) return;
+    const uploadId = String(req.query.uploadId || '').replace(/[^a-zA-Z0-9._-]+/g, '').slice(0, 80);
+    const fileName = path.basename(String(req.query.fileName || 'source.zip'));
+    const vehicleId = req.query.vehicleId || req.query.vid || req.query.id || path.basename(fileName, path.extname(fileName));
+    const index = Number(req.query.index);
+    const total = Number(req.query.total);
+    const ext = path.extname(fileName).toLowerCase();
+    if (!uploadId) return res.status(400).json({ ok: false, error: 'uploadId is required.' });
+    if (!['.zip', '.7z'].includes(ext)) return res.status(400).json({ ok: false, error: 'Vehicle model upload must be a .zip or .7z file.' });
+    if (!Number.isInteger(index) || index < 0 || !Number.isInteger(total) || total <= 0 || index >= total) {
+      return res.status(400).json({ ok: false, error: 'Invalid chunk index/total.' });
+    }
+    const chunk = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || '');
+    if (!chunk.length) return res.status(400).json({ ok: false, error: 'Empty upload chunk.' });
+
+    sessionDir = path.join(VEHICLE_UPLOAD_TMP, 'chunks', uploadId);
+    await fs.mkdir(sessionDir, { recursive: true });
+    await fs.writeFile(path.join(sessionDir, `${index}.part`), chunk);
+    await fs.writeFile(path.join(sessionDir, 'meta.json'), JSON.stringify({ uploadId, fileName, vehicleId, total, updatedAt: now_() }, null, 2));
+
+    const present = [];
+    for (let i = 0; i < total; i++) {
+      if (await fileExists_(path.join(sessionDir, `${i}.part`))) present.push(i);
+    }
+    if (present.length < total) {
+      return res.json({ ok: true, complete: false, received: present.length, total });
+    }
+
+    assembledFile = path.join(sessionDir, fileName);
+    const handle = await fs.open(assembledFile, 'w');
+    try {
+      for (let i = 0; i < total; i++) {
+        const part = await fs.readFile(path.join(sessionDir, `${i}.part`));
+        await handle.write(part);
+      }
+    } finally {
+      await handle.close();
+    }
+    const result = await finalizeVehicleUploadArchive_(assembledFile, vehicleId, fileName);
+    await fs.rm(sessionDir, { recursive: true, force: true });
+    return res.json(Object.assign({ complete: true }, result));
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message || String(err) });
   }
 });
 
@@ -1297,7 +1352,7 @@ const FIRST_PARTY_APPS = [
   { k: 'm', id: 'bodyMods', nm: 'BodyMods.LMX', path: 'modules/bodyMods.html?v=2026051507', ico: '+', desc: 'Body Status tracker', w: 900, h: 650 },
   { k: 'h', id: 'chat', nm: 'Chat.LMX', path: 'modules/chat.html', ico: '#', desc: 'Board messenger process', w: 850, h: 620 },
   { k: 'ph', id: 'pharma', nm: 'Pharma.LMX', path: 'modules/pharma.html?v=2026051501', ico: 'Rx', desc: 'Public compound marketplace / clean supply registry', w: 1180, h: 800 },
-  { k: 'df', id: 'dataEditor', nm: 'DataForge.LMX', path: 'modules/dataEditor.html?v=2026051801', ico: 'DF', desc: 'Sheet entry formatter', w: 980, h: 720 },
+  { k: 'df', id: 'dataEditor', nm: 'DataForge.LMX', path: 'modules/dataEditor.html?v=2026052101', ico: 'DF', desc: 'Sheet entry formatter', w: 980, h: 720 },
   { k: 'qv', id: 'qvault', nm: 'QVault.LMX', path: 'modules/qvault.html?v=2026051502', ico: 'QV', desc: 'Personal inventory grid', w: 980, h: 760 },
   { k: 'ax', id: 'axeom', nm: 'AXξOM.LMX', path: 'modules/axeom.html?v=2026051702', ico: 'AX', desc: 'Sequential eteph spellcraft compiler', w: 1180, h: 780 },
   { k: 'cv', id: 'convert', nm: 'Convert.LMX', path: 'modules/convert.html', ico: '⇄', desc: 'Currency and unit conversion suite', w: 760, h: 560, startOnly: true },
@@ -2342,8 +2397,10 @@ function currencyPresets(payload, user) {
     ], fallback:true, error:String(e && e.message ? e.message : e) };
   }
 }
+const DATAFORGE_ALLOWED_SHEETS = ['core','catalog','vehicles','mods','bodySlots','bodyCategories','dictApps','themes','chatRooms','work','pharmaItems','currencySettings','bodyProfiles','bodyInstalled','qvault'];
+
 function dataAppend(payload, user) {
-  const allowed = ['core','catalog','vehicles','mods','bodySlots','bodyCategories','dictApps','themes','chatRooms','work','pharmaItems','currencySettings','bodyProfiles','bodyInstalled','qvault'];
+  const allowed = DATAFORGE_ALLOWED_SHEETS;
   const sheet = String(payload && payload.sheet || '').trim();
   if (allowed.indexOf(sheet) < 0) throw new Error('DataForge refused sheet: ' + sheet);
   const record = payload.record || {};
@@ -2353,6 +2410,57 @@ function dataAppend(payload, user) {
   append_(sheet, record);
   appendSafe_('audit', ['id','t','cid','action','ok','blob'], { id:'a_'+Date.now(), t:now_(), cid:(user&&user.cid)||'', action:'data.append:'+sheet, ok:1, blob:pack_({kind:payload.kind, record}) });
   return { appended:true, sheet, headers:headers.length };
+}
+
+function dataSearch(payload, user) {
+  const sheet = String(payload && payload.sheet || '').trim();
+  if (DATAFORGE_ALLOWED_SHEETS.indexOf(sheet) < 0) throw new Error('DataForge refused sheet: ' + sheet);
+  const q = String(payload && payload.query || '').trim().toLowerCase();
+  const limit = Math.min(Math.max(Number(payload && payload.limit || 25), 1), 100);
+  const items = rows_(sheet)
+    .map((row, index) => Object.assign({ _index: index }, row))
+    .filter(row => !q || JSON.stringify(row).toLowerCase().indexOf(q) >= 0)
+    .slice(0, limit);
+  return { sheet, items };
+}
+
+function dataSave(payload, user) {
+  const sheet = String(payload && payload.sheet || '').trim();
+  if (DATAFORGE_ALLOWED_SHEETS.indexOf(sheet) < 0) throw new Error('DataForge refused sheet: ' + sheet);
+  const record = Object.assign({}, payload.record || {});
+  const rawIndex = payload.index;
+  const index = rawIndex === undefined || rawIndex === null || rawIndex === '' ? -1 : Number(rawIndex);
+  const keyField = String(payload.keyField || '').trim();
+  const keyValue = String(payload.keyValue || (keyField ? record[keyField] : '') || '').trim();
+  if (!Object.keys(record).length) throw new Error('DataForge save needs a record.');
+  const s = ensureSheet_(sheet, Object.keys(record).length ? Object.keys(record) : ['id','blob']);
+  const headers = (s.headers && s.headers.length ? s.headers : Object.keys(record)).map(String);
+  headers.forEach(h => { if (!(h in record)) record[h] = ''; });
+
+  let updated = null;
+  let changed = 0;
+  if (Number.isInteger(index) && index >= 0) {
+    let i = -1;
+    changed = updateRows_(sheet, () => {
+      i += 1;
+      return i === index;
+    }, row => {
+      updated = Object.assign({}, row, record);
+      return updated;
+    });
+  }
+  if (!changed && keyField && keyValue) {
+    changed = updateRows_(sheet, row => String(row[keyField] || '').trim() === keyValue, row => {
+      updated = Object.assign({}, row, record);
+      return updated;
+    });
+  }
+  if (!changed) {
+    append_(sheet, record);
+    updated = record;
+  }
+  appendSafe_('audit', ['id','t','cid','action','ok','blob'], { id:'a_'+Date.now(), t:now_(), cid:(user&&user.cid)||'', action:(changed?'data.update:':'data.upsert:')+sheet, ok:1, blob:pack_({kind:payload.kind, keyField, keyValue, index, record}) });
+  return { saved:true, updated:!!changed, appended:!changed, sheet, record:updated };
 }
 function themeList() {
   try { return { themes: rows_('themes') }; } catch(e) { return { themes: [] }; }
@@ -2533,6 +2641,8 @@ const routes = {
   'currency.gold': currencyGold,
   'currency.presets': currencyPresets,
   'data.append': dataAppend,
+  'data.search': dataSearch,
+  'data.save': dataSave,
   'theme.list': themeList,
   'theme.save': themeSave,
   'user.wallpaper.save': saveUserWallpaper,
