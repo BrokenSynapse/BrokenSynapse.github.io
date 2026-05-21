@@ -593,7 +593,7 @@ async function extractVehicleZip_(archiveInput, vehicleId, originalName = 'sourc
     conversion: { status: 'pending' }
   };
   await fs.writeFile(path.join(root.full, 'manifest.json'), JSON.stringify(manifest, null, 2));
-  return { safeId, root, sourceDir, manifest };
+  return { safeId, root, sourceDir, archiveFile, archiveName, manifest };
 }
 
 async function convertVehicleModel_(sourceDir, outputFile) {
@@ -739,6 +739,20 @@ async function finalizeVehicleModelConversion_(safeId, sourceDir, rootFull) {
       stderr: String(converterReport?.blenderStderr || converted.stderr || '').slice(-24000)
     }
   };
+}
+
+async function deleteVehicleSourceArchives_(rootFull) {
+  const deleted = [];
+  const entries = await fs.readdir(rootFull, { withFileTypes: true }).catch(() => []);
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const ext = path.extname(entry.name).toLowerCase();
+    if (!['.zip', '.7z'].includes(ext)) continue;
+    const full = path.join(rootFull, entry.name);
+    await fs.rm(full, { force: true });
+    deleted.push(entry.name);
+  }
+  return deleted;
 }
 
 app.get('/api/files/assets', async (req, res) => {
@@ -972,10 +986,13 @@ app.post('/api/vehicles/model/upload', vehicleUpload.single('file'), async (req,
     const archiveInput = req.file.path || req.file.buffer;
     const extracted = await extractVehicleZip_(archiveInput, vehicleId, req.file.originalname || 'source.zip');
     const finalized = await finalizeVehicleModelConversion_(extracted.safeId, extracted.sourceDir, extracted.root.full);
+    const deletedSourceArchives = finalized.conversion.ok ? await deleteVehicleSourceArchives_(extracted.root.full) : [];
     const manifest = Object.assign({}, extracted.manifest, {
       conversion: finalized.conversion,
       glb: finalized.glb,
-      rawSources: finalized.rawSources
+      rawSources: finalized.rawSources,
+      sourceZip: deletedSourceArchives.length ? '' : extracted.manifest.sourceZip,
+      sourceArchiveDeleted: deletedSourceArchives.length ? now_() : ''
     });
     await fs.writeFile(path.join(extracted.root.full, 'manifest.json'), JSON.stringify(manifest, null, 2));
     res.json({
@@ -983,6 +1000,7 @@ app.post('/api/vehicles/model/upload', vehicleUpload.single('file'), async (req,
       vehicleId: extracted.safeId,
       manifest: assetWebPath_(`vehicles/models/${extracted.safeId}/manifest.json`),
       sourceZip: manifest.sourceZip,
+      sourceArchiveDeleted: manifest.sourceArchiveDeleted,
       sourceDir: manifest.sourceDir,
       glb: manifest.glb,
       rawSources: manifest.rawSources,
@@ -1020,14 +1038,16 @@ app.post('/api/vehicles/model/convert', express.json({ limit: '2mb' }), async (r
     }
 
     const finalized = await finalizeVehicleModelConversion_(safeId, sourceDir, root.full);
+    const deletedSourceArchives = finalized.conversion.ok ? await deleteVehicleSourceArchives_(root.full) : [];
     const manifest = Object.assign({}, existing, {
       id: existing.id || safeId,
       vehicleId: existing.vehicleId || String(vehicleId),
-      sourceZip: existing.sourceZip || assetWebPath_(`vehicles/models/${safeId}/source.zip`),
+      sourceZip: deletedSourceArchives.length ? '' : (existing.sourceZip || assetWebPath_(`vehicles/models/${safeId}/source.zip`)),
       sourceDir: existing.sourceDir || assetWebPath_(`vehicles/models/${safeId}/source`),
       updatedAt: now_(),
       glb: finalized.glb,
       rawSources: finalized.rawSources,
+      sourceArchiveDeleted: deletedSourceArchives.length ? now_() : (existing.sourceArchiveDeleted || ''),
       conversion: finalized.conversion
     });
     await fs.writeFile(manifestFile, JSON.stringify(manifest, null, 2));
@@ -1037,6 +1057,7 @@ app.post('/api/vehicles/model/convert', express.json({ limit: '2mb' }), async (r
       manifest: assetWebPath_(`vehicles/models/${safeId}/manifest.json`),
       glb: manifest.glb,
       rawSources: manifest.rawSources,
+      sourceArchiveDeleted: manifest.sourceArchiveDeleted,
       conversion: manifest.conversion
     });
   } catch (err) {
