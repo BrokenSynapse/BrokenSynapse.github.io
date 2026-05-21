@@ -10,6 +10,8 @@ HASH_COLOR_RE = re.compile(r"#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})")
 TEXTURE_MAX_SIZE = int(os.environ.get("VEHICLE_TEXTURE_MAX", "1024") or "1024")
 DECIMATE_RATIO = float(os.environ.get("VEHICLE_DECIMATE_RATIO", "1.0") or "1.0")
 DECIMATE_MIN_FACES = int(os.environ.get("VEHICLE_DECIMATE_MIN_FACES", "25000") or "25000")
+DRACO_ENABLED = os.environ.get("VEHICLE_DRACO", "1").lower() not in {"0", "false", "no", "off"}
+DRACO_LEVEL = int(os.environ.get("VEHICLE_DRACO_LEVEL", "6") or "6")
 
 
 def find_model_files(root):
@@ -744,14 +746,35 @@ def main():
     if not wheel_like:
         warnings.append("No wheel/tire/rim mesh names were present after Collada import. The source export may omit wheels or name them indirectly.")
 
-    export_result = bpy.ops.export_scene.gltf(
-        filepath=output,
-        export_format="GLB",
-        export_texcoords=True,
-        export_normals=True,
-        export_materials="EXPORT",
-        export_apply=False
-    )
+    export_kwargs = {
+        "filepath": output,
+        "export_format": "GLB",
+        "export_texcoords": True,
+        "export_normals": True,
+        "export_materials": "EXPORT",
+        "export_apply": False,
+    }
+    draco_used = False
+    if DRACO_ENABLED:
+        export_kwargs.update({
+            "export_draco_mesh_compression_enable": True,
+            "export_draco_mesh_compression_level": max(0, min(10, DRACO_LEVEL)),
+            "export_draco_position_quantization": 14,
+            "export_draco_normal_quantization": 10,
+            "export_draco_texcoord_quantization": 12,
+            "export_draco_color_quantization": 10,
+            "export_draco_generic_quantization": 12,
+        })
+        draco_used = True
+    try:
+        export_result = bpy.ops.export_scene.gltf(**export_kwargs)
+    except TypeError:
+        for key in list(export_kwargs.keys()):
+            if key.startswith("export_draco_"):
+                export_kwargs.pop(key, None)
+        draco_used = False
+        warnings.append("Blender glTF exporter does not support Draco compression in this build; exported plain GLB.")
+        export_result = bpy.ops.export_scene.gltf(**export_kwargs)
 
     if not os.path.exists(output) or os.path.getsize(output) <= 0:
         raise SystemExit("GLB export finished without writing output. Result: %s Import report: %s" % (list(export_result), json.dumps(imported_reports)))
@@ -781,6 +804,9 @@ def main():
         "imagesPreparedForExport": len([item for item in export_image_report if "to" in item]),
         "exportImageSample": export_image_report[:80],
         "textureMaxSize": TEXTURE_MAX_SIZE,
+        "dracoEnabled": DRACO_ENABLED,
+        "dracoUsed": draco_used,
+        "dracoLevel": DRACO_LEVEL,
         "imagesOptimized": len([item for item in image_report if "to" in item]),
         "imageSample": image_report[:80],
         "warnings": warnings,
