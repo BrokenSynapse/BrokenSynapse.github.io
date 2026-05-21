@@ -2455,6 +2455,9 @@ function dataSave(payload, user) {
       return updated;
     });
   }
+  if (!changed && payload.requireUpdate) {
+    throw new Error('DataForge could not find the selected row to update. Search and select the record again before saving.');
+  }
   if (!changed) {
     append_(sheet, record);
     updated = record;
