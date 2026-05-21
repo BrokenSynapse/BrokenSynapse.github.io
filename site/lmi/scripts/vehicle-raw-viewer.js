@@ -38,9 +38,28 @@ function normalizeUrl(url) {
   return String(url || '').replace(/\\/g, '/');
 }
 
+function encodeAssetUrl(url) {
+  const clean = normalizeUrl(url);
+  const [pathPart, query = ''] = clean.split('?');
+  const encoded = pathPart.split('/').map(part => {
+    if (!part) return part;
+    try {
+      return encodeURIComponent(decodeURIComponent(part));
+    } catch {
+      return encodeURIComponent(part);
+    }
+  }).join('/');
+  return encoded + (query ? `?${query}` : '');
+}
+
 function basePath(url) {
-  const clean = normalizeUrl(url).split('?')[0];
+  const clean = encodeAssetUrl(url).split('?')[0];
   return clean.slice(0, clean.lastIndexOf('/') + 1);
+}
+
+function fileName(url) {
+  const clean = encodeAssetUrl(url).split('?')[0];
+  return clean.slice(clean.lastIndexOf('/') + 1);
 }
 
 function fitCamera(THREE, camera, controls, object, padding = 1.35) {
@@ -102,8 +121,15 @@ function emitFirstObject(opts) {
 
 async function loadDaeScene(THREE, manager, item) {
   const loader = new rawViewerModules.ColladaLoader(manager);
-  const collada = await loader.loadAsync(normalizeUrl(item.path));
+  const collada = await loader.loadAsync(encodeAssetUrl(item.path));
   return collada.scene;
+}
+
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_resolve, reject) => setTimeout(() => reject(new Error(`${label} timed out`)), ms))
+  ]);
 }
 
 async function loadObjScene(THREE, manager, item, opts) {
@@ -112,22 +138,30 @@ async function loadObjScene(THREE, manager, item, opts) {
     emitProgress(opts, 'Loading material map...');
     const mtlLoader = new rawViewerModules.MTLLoader(manager);
     mtlLoader.setPath(basePath(item.mtl));
-    const materials = await mtlLoader.loadAsync(normalizeUrl(item.mtl).split('/').pop());
+    const materials = await mtlLoader.loadAsync(fileName(item.mtl));
     materials.preload();
     objLoader.setMaterials(materials);
   }
   emitProgress(opts, 'Streaming KN5 mesh...');
   objLoader.setPath(basePath(item.path));
-  return objLoader.loadAsync(normalizeUrl(item.path).split('/').pop());
+  return objLoader.loadAsync(fileName(item.path));
 }
 
 async function streamRawSource(THREE, manager, source, root, controls, camera, state, opts) {
   if (source?.preferred === 'dae' && Array.isArray(source.dae) && source.dae.length) {
     const items = source.dae.slice(0, 4);
+    const errors = [];
     for (let i = 0; i < items.length; i++) {
       if (state.disposed) return;
       emitProgress(opts, `Loading DAE ${i + 1}/${items.length}...`);
-      const scene = await loadDaeScene(THREE, manager, items[i]);
+      let scene;
+      try {
+        scene = await withTimeout(loadDaeScene(THREE, manager, items[i]), opts.daeTimeoutMs || 9000, `DAE ${i + 1}`);
+      } catch (err) {
+        errors.push(`${items[i].relPath || items[i].path}: ${err.message || err}`);
+        emitProgress(opts, `Skipping DAE ${i + 1}/${items.length}...`);
+        continue;
+      }
       if (state.disposed) {
         disposeObject(scene);
         return;
@@ -138,6 +172,9 @@ async function streamRawSource(THREE, manager, source, root, controls, camera, s
       fitCamera(THREE, camera, controls, root);
       emitProgress(opts, i === items.length - 1 ? 'Raw DAE ready.' : `Showing DAE ${i + 1}/${items.length}...`);
       await new Promise(resolve => requestAnimationFrame(resolve));
+    }
+    if (!root.children.length) {
+      throw new Error(errors[0] || 'No DAE source could be displayed.');
     }
     return;
   }
@@ -236,7 +273,7 @@ async function mountRawVehicleViewer(mount, source, opts = {}) {
 
   const manager = new THREE.LoadingManager();
   manager.addHandler(/\.dds$/i, new DDSLoader());
-  manager.setURLModifier(url => normalizeUrl(url));
+  manager.setURLModifier(url => encodeAssetUrl(url));
   emitProgress(opts, 'Preparing hardware viewer...');
   try {
     await streamRawSource(THREE, manager, source, root, controls, camera, state, opts);
