@@ -12,6 +12,7 @@ services:
       - caddy_config:/config
     depends_on:
       - api
+      - api-rust
 
   api:
     build:
@@ -33,6 +34,17 @@ services:
       - ./data:/data
       - ./site:/site
       - ./uploads:/uploads
+
+  api-rust:
+    build:
+      context: ./api-rust
+    container_name: bs-api-rust
+    restart: unless-stopped
+    environment:
+      LMI_R_BIND: 0.0.0.0:3100
+      LMI_R_DB: /data/lmi-r.sqlite
+    volumes:
+      - ./data:/data
 
 volumes:
   caddy_data:
