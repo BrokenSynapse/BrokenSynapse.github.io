@@ -49,7 +49,16 @@ Available endpoints:
 
 ## How `/lmi-r` Differs From `/lmi`
 
-`/lmi-r` is a new typed desktop shell, not a port of all existing modules. It has a module registry with placeholder entries for `Settings.LMX`, `Sift.LMX`, `Fleetline.LMX`, and `DataForge.LMX`. It displays Rust backend status from `/api-r/status` to prove the vertical slice is wired.
+`/lmi-r` is now a terminal-first shell, not a port of all existing modules. It has a module registry with placeholder entries for `Settings.LMX`, `Sift.LMX`, `Fleetline.LMX`, and `DataForge.LMX`. It displays Rust backend status from `/api-r/status` to prove the vertical slice is wired.
+
+The terminal starts with:
+
+```text
+LMI Ver. 19.2.1.1.2212
+© Leviathan Exports Company.
+```
+
+The banner is normal terminal output and can be removed with `clear`.
 
 `/lmi` continues to be the production app and should be migrated module by module only after compatibility contracts are clear.
 
@@ -57,12 +66,13 @@ Available endpoints:
 
 LMI-R modules communicate through `ModuleContext`, backed by the frontend `LmiBus`. Modules should not call `fetch()` for normal app data, import the bus directly, or use per-module bridge scripts. The initial bus supports packets, local/session state, persisted state through `/api-r/packet`, pub/sub events, module requests, app actions, and debug inspection.
 
-Current stub proof points:
+Current terminal proof points:
 
-- `Settings.LMX` writes and reloads `settings.demo.message` through `ctx.setState(..., { persist: true })`.
-- `Sift.LMX` publishes `asset:selected`.
+- `save <text>` writes and reloads `settings.demo.message` through `ctx.setState(..., { persist: true })`.
+- `asset demo` makes `Sift.LMX` publish `asset:selected`.
 - `Fleetline.LMX` receives `asset:selected` without importing Sift.
-- `DataForge.LMX` requests a bus debug snapshot through `ctx.callAction('debug.bus')`.
+- `bus` makes `DataForge.LMX` request a bus debug snapshot through `ctx.callAction('debug.bus')`.
+- `de list` and `de install <id>` reserve a path for future standalone desktop environments while keeping the terminal as the base interface.
 
 The Rust backend remains generic: it accepts packets, logs packets to `event_log`, and persists compact state in `entity` plus `entity_state`.
 

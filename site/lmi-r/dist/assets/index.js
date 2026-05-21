@@ -1,4 +1,4 @@
-const Op={MSG_REQUEST:201,MSG_RESPONSE:202,STATE_GET:300,STATE_SET:301,APP_ACTION:700,EVENT_PUBLISH:800,DEBUG_PING:900};
+const Op={STATE_GET:300,STATE_SET:301,APP_ACTION:700,EVENT_PUBLISH:800};
 const modules=[
   {id:"settings",name:"Settings.LMX",phase:"stub",capabilities:["state:read","state:write","user:read","user:write","asset:read"]},
   {id:"sift",name:"Sift.LMX",phase:"stub",capabilities:["asset:read","asset:write","entity:read","entity:write","event:publish"]},
@@ -6,54 +6,41 @@ const modules=[
   {id:"dataforge",name:"DataForge.LMX",phase:"compat-planned",capabilities:["debug:read","entity:read","entity:write","state:read","state:write"]}
 ];
 const root=document.querySelector("#app");
-const state={status:null,statusText:"Checking Rust backend...",settingsValue:"loading",fleetlineAsset:null,siftNote:"No asset published yet.",debug:null,recentPackets:[],topics:new Map(),values:new Map()};
+const term={lines:[
+  {kind:"system",text:"LMI Ver. 19.2.1.1.2212"},
+  {kind:"system",text:"© Leviathan Exports Company."},
+  {kind:"system",text:""},
+  {kind:"system",text:"LMI-R terminal initialized."},
+  {kind:"system",text:'Type "neofetch" for system identity or "help" for commands.'}
+],activeApp:"terminal",status:null,statusText:"Checking Rust backend...",settingsValue:"loading",fleetlineAsset:null,siftNote:"No asset selected.",debug:null,recentPackets:[],topics:new Map(),values:new Map(),deCatalog:["lmi-r-desktop-preview","fleetline-kiosk","dataforge-workbench"]};
 function packet(moduleId,op,payload,target={kind:"shell",id:"runtime"},scope="session"){return{id:crypto.randomUUID(),op,source:{kind:"module",id:moduleId},target,scope,flags:0,ts:Date.now(),payload}}
+function record(p){term.recentPackets.push(p);if(term.recentPackets.length>60)term.recentPackets.shift()}
 async function postPacket(p){record(p);const r=await fetch("/api-r/packet",{method:"POST",headers:{Accept:"application/json","Content-Type":"application/json"},body:JSON.stringify(p),cache:"no-store"});const body=await r.json().catch(()=>({}));if(!r.ok)throw new Error(body.error||`packet failed ${r.status}`);record(body);return body}
-function record(p){state.recentPackets.push(p);if(state.recentPackets.length>40)state.recentPackets.shift()}
-function debugView(){return{registeredModules:modules.map(({id,name,capabilities})=>({id,name,capabilities})),recentPackets:state.recentPackets.slice(-20),knownTopics:[...state.topics.keys()].sort(),pendingRequestCount:0,stateKeys:[...state.values.keys()].sort()}}
-function publish(moduleId,topic,payload){const p=packet(moduleId,Op.EVENT_PUBLISH,{topic,payload},undefined,"broadcast");record(p);(state.topics.get(topic)||[]).forEach(fn=>fn(payload,p))}
-function subscribe(topic,fn){const list=state.topics.get(topic)||[];list.push(fn);state.topics.set(topic,list)}
-async function setState(moduleId,key,value,{persist=false,scope="user"}={}){const p=packet(moduleId,Op.STATE_SET,{key,value,scope},persist?{kind:"server",id:"api-r"}:{kind:"shell",id:"runtime"},persist?"server":scope);state.values.set(key,value);record(p);if(persist)await postPacket(p)}
-async function getState(moduleId,key,scope="user"){if(state.values.has(key))return state.values.get(key);const p=packet(moduleId,Op.STATE_GET,{key,scope},{kind:"server",id:"api-r"},"server");const response=await postPacket(p);const value=response.payload?.value;if(value!==undefined&&value!==null)state.values.set(key,value);return value??undefined}
-function render(){
-  const moduleTiles=modules.map(mod=>`<button class="module-tile" type="button" data-module="${mod.id}"><span>${mod.name}</span><small>${mod.phase}</small></button>`).join("");
-  root.innerHTML=`<main class="desktop" data-theme="lmi-r-dark">
-    <section class="topbar"><div><p class="eyebrow">Leviathan Mainframe Interface</p><h1>LMI-R</h1></div><div class="session"><span>local-operator</span><strong>placeholder</strong></div></section>
-    <section class="workspace"><aside class="dock" aria-label="Module registry">${moduleTiles}</aside><section class="panel">
-      <div class="panel-head"><div><p class="eyebrow">Rewrite vertical slice</p><h2>LMI Bus Shell</h2></div><span class="pill">0 windows</span></div>
-      <div class="status-grid">
-        <article><span>Backend</span><strong>${esc(state.statusText)}</strong></article>
-        <article><span>Service</span><strong>${esc(state.status?.service??"pending")}</strong></article>
-        <article><span>API Prefix</span><strong>${esc(state.status?.api_prefix??"/api-r")}</strong></article>
-        <article><span>Database</span><strong>${esc(state.status?.database??"data/lmi-r.sqlite")}</strong></article>
-      </div>
-      <div class="window-preview"><h3>Unified Transfer Layer</h3><p>Every stub below uses ModuleContext/LMI Bus semantics: state, requests, pub/sub, and server persistence all move as packets.</p></div>
-      <div class="module-grid">
-        <article class="module-card"><h3>Settings.LMX</h3><p>Persists one shell preference through ctx.setState().</p><strong>${esc(state.settingsValue)}</strong><button data-action="settings-save">Persist demo value</button></article>
-        <article class="module-card"><h3>Sift.LMX</h3><p>Publishes a fake asset:selected event through the bus.</p><strong>${esc(state.siftNote)}</strong><button data-action="sift-publish">Publish asset:selected</button></article>
-        <article class="module-card"><h3>Fleetline.LMX</h3><p>Subscribes to asset:selected without importing Sift.</p><strong>${state.fleetlineAsset?`${esc(state.fleetlineAsset.id)} (${esc(state.fleetlineAsset.mime||"asset")})`:"Waiting for asset event."}</strong></article>
-        <article class="module-card wide"><h3>DataForge.LMX</h3><p>Requests bus debug through ctx.callAction().</p><button data-action="dataforge-debug">Refresh bus debug</button><pre>${esc(JSON.stringify(state.debug??{status:"No debug snapshot yet."},null,2))}</pre></article>
-      </div>
-    </section></section></main>`;
-  wire();
+function publish(moduleId,topic,payload){const p=packet(moduleId,Op.EVENT_PUBLISH,{topic,payload},undefined,"broadcast");record(p);(term.topics.get(topic)||[]).forEach(fn=>fn(payload,p))}
+function subscribe(topic,fn){const list=term.topics.get(topic)||[];list.push(fn);term.topics.set(topic,list)}
+async function setState(moduleId,key,value,{persist=false,scope="user"}={}){const p=packet(moduleId,Op.STATE_SET,{key,value,scope},persist?{kind:"server",id:"api-r"}:{kind:"shell",id:"runtime"},persist?"server":scope);term.values.set(key,value);record(p);if(persist)await postPacket(p)}
+async function getState(moduleId,key,scope="user"){if(term.values.has(key))return term.values.get(key);const p=packet(moduleId,Op.STATE_GET,{key,scope},{kind:"server",id:"api-r"},"server");const response=await postPacket(p);const value=response.payload?.value;if(value!==undefined&&value!==null)term.values.set(key,value);return value??undefined}
+function debugView(){return{registeredModules:modules.map(({id,name,capabilities})=>({id,name,capabilities})),recentPackets:term.recentPackets.slice(-20),knownTopics:[...term.topics.keys()].sort(),pendingRequestCount:0,stateKeys:[...term.values.keys()].sort()}}
+function push(kind,text){term.lines.push({kind,text});if(term.lines.length>120)term.lines.splice(0,term.lines.length-120)}
+function block(lines){lines.forEach(line=>push("output",line))}
+function neofetch(){return["      __    __  __  __   ___        ___","     / /   /  |/  |/ /  / _ \\\\ ____ / _ \\\\","    / /__ / /|_/| / /__/ , _//___// , _/","   /____//_/   /_/____/_/|_|     /_/|_|","",`OS: LMI-R Terminal Runtime`,`Kernel: LMI Bus packet layer`,`Shell: terminal-first`,`Backend: ${term.statusText}`,`Service: ${term.status?.service??"offline"}`,`Apps: ${modules.map(m=>m.id).join(", ")}`,`Active App: ${term.activeApp}`,"DE: none installed; terminal is base interface"]}
+async function run(command){push("input",command);const[raw,...args]=command.split(/\s+/);const op=raw.toLowerCase();
+  if(op==="help"){block(["Commands:","  neofetch          show LMI-R system identity","  apps              list available apps","  open <app>        focus a stub app","  status            show Rust backend status","  save <text>       persist Settings state through LMI Bus","  asset demo        publish Sift asset:selected event","  bus               DataForge bus debug snapshot","  de list           list future desktop environments","  de install <id>   placeholder installer for future standalone DEs","  clear             clear terminal output"]);return}
+  if(op==="clear"){term.lines=[];return}
+  if(op==="neofetch"){block(neofetch());return}
+  if(op==="apps"){block(modules.map(m=>`${m.id.padEnd(10)} ${m.name} [${m.phase}]`));return}
+  if(op==="open"){const id=args[0]||"";if(!modules.some(m=>m.id===id)){push("error",`Unknown app: ${id||"(missing)"}`);return}term.activeApp=id;push("system",`Opened ${id} through terminal shell.`);return}
+  if(op==="status"){block([term.statusText,`service: ${term.status?.service??"offline"}`,`version: ${term.status?.version??"unknown"}`,`database: ${term.status?.database??"unavailable"}`]);return}
+  if(op==="save"){const msg=args.join(" ").trim()||`Saved at ${new Date().toLocaleTimeString()}`;await setState("settings","settings.demo.message",msg,{persist:true,scope:"user"});term.settingsValue=await getState("settings","settings.demo.message")||msg;term.activeApp="settings";push("system",`Persisted settings.demo.message -> ${msg}`);return}
+  if(op==="asset"&&args[0]==="demo"){const asset={ref:"asset:demo-fleetline-preview",kind:"asset",id:"demo-fleetline-preview",mime:"image/png",size:4096};publish("sift","asset:selected",asset);term.siftNote=`Published ${asset.id}`;term.activeApp="sift";push("system",`Sift published asset:selected -> ${asset.id}`);return}
+  if(op==="bus"){const p=packet("dataforge",Op.APP_ACTION,{action:"debug.bus"});record(p);term.debug=debugView();term.activeApp="dataforge";block([`registered modules: ${term.debug.registeredModules.length}`,`known topics: ${term.debug.knownTopics.join(", ")||"none"}`,`recent packets: ${term.debug.recentPackets.length}`,"pending requests: 0"]);return}
+  if(op==="de"&&args[0]==="list"){block(term.deCatalog.map(id=>`${id}    available later`));return}
+  if(op==="de"&&args[0]==="install"){const id=args[1]||"";if(!term.deCatalog.includes(id)){push("error",`Unknown DE package: ${id||"(missing)"}`);return}push("system",`${id} queued for future DE installer. Terminal remains the base shell.`);return}
+  push("error",`Command not found: ${command}`)
 }
-function wire(){
-  root.querySelector('[data-action="settings-save"]')?.addEventListener("click",()=>setState("settings","settings.demo.message",`Saved at ${new Date().toLocaleTimeString()}`,{persist:true,scope:"user"}).then(()=>getState("settings","settings.demo.message")).then(v=>{state.settingsValue=v||"Saved.";render()}));
-  root.querySelector('[data-action="sift-publish"]')?.addEventListener("click",()=>{const asset={ref:"asset:demo-fleetline-preview",kind:"asset",id:"demo-fleetline-preview",mime:"image/png",size:4096};publish("sift","asset:selected",asset);state.siftNote=`Published ${asset.id}`;render()});
-  root.querySelector('[data-action="dataforge-debug"]')?.addEventListener("click",()=>{const p=packet("dataforge",Op.APP_ACTION,{action:"debug.bus"});record(p);state.debug=debugView();render()});
-}
+function activeApp(){if(term.activeApp==="settings")return`<p>settings.demo.message</p><code>${esc(term.settingsValue)}</code>`;if(term.activeApp==="sift")return`<p>${esc(term.siftNote)}</p><code>Try: asset demo</code>`;if(term.activeApp==="fleetline")return`<p>Last selected asset</p><code>${term.fleetlineAsset?esc(`${term.fleetlineAsset.id} ${term.fleetlineAsset.mime??""}`):"none"}</code>`;if(term.activeApp==="dataforge")return`<p>Bus debug</p><pre>${esc(JSON.stringify(term.debug??{hint:"run: bus"},null,2))}</pre>`;return"<p>Terminal mode. Standalone desktop environments can be installed later without becoming the default shell.</p>"}
+function render(){const appList=modules.map(m=>`<span>${m.id}</span>`).join("");root.innerHTML=`<main class="terminal-shell" data-theme="lmi-r-dark"><section class="terminal-head"><div><p class="eyebrow">Leviathan Mainframe Interface</p><h1>LMI-R Terminal</h1></div><div class="session"><span>local-operator</span><strong>${esc(term.status?.service??"offline")}</strong></div></section><section class="terminal-layout"><section class="terminal-window" aria-label="LMI-R terminal"><div class="terminal-titlebar"><span>lmi-r://terminal</span><span>${esc(term.statusText)}</span></div><div id="terminalOutput" class="terminal-output">${term.lines.map(l=>`<div class="term-line ${l.kind}">${esc(l.text)}</div>`).join("")}</div><form id="terminalForm" class="terminal-input"><span>operator@lmi-r:~$</span><input id="terminalCommand" autocomplete="off" spellcheck="false" autofocus></form></section><aside class="terminal-side"><section><h2>Apps</h2><div class="app-list">${appList}</div></section><section><h2>Active</h2><strong>${esc(term.activeApp)}</strong>${activeApp()}</section></aside></section></main>`;wire()}
+function wire(){const out=document.querySelector("#terminalOutput");out?.scrollTo({top:out.scrollHeight});const input=document.querySelector("#terminalCommand");input?.focus();document.querySelector("#terminalForm")?.addEventListener("submit",e=>{e.preventDefault();const command=input?.value.trim()||"";if(!command)return;if(input)input.value="";run(command).then(render)})}
 function esc(v){return String(v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
-async function boot(){
-  if(!root)throw new Error("LMI-R root element missing.");
-  subscribe("asset:selected",(asset)=>{state.fleetlineAsset=asset;render()});
-  render();
-  try{
-    const response=await fetch("/api-r/status",{headers:{Accept:"application/json"},cache:"no-store"});
-    const body=await response.json();
-    if(!response.ok)throw new Error(body.error||`API request failed: ${response.status}`);
-    state.status=body;state.statusText="Rust backend online";
-    state.settingsValue=await getState("settings","settings.demo.message")||"No persisted value yet.";
-  }catch(error){state.statusText=`Rust backend unavailable: ${String(error)}`}
-  render();
-}
+async function boot(){if(!root)throw new Error("LMI-R root element missing.");subscribe("asset:selected",asset=>{term.fleetlineAsset=asset;push("system",`Fleetline received asset:selected -> ${asset.id}`);render()});render();try{const r=await fetch("/api-r/status",{headers:{Accept:"application/json"},cache:"no-store"});const body=await r.json();if(!r.ok)throw new Error(body.error||`API request failed: ${r.status}`);term.status=body;term.statusText="Rust backend online";term.settingsValue=await getState("settings","settings.demo.message")||"No persisted value yet.";push("system","Connected to /api-r. Packet persistence is available.")}catch(error){term.statusText=`Rust backend unavailable: ${String(error)}`;push("error",term.statusText)}render()}
 boot();
