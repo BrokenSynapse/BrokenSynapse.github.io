@@ -12,6 +12,8 @@ const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
 const memCache = new Map();
+const vehicleConversionJobs = new Map();
+const VEHICLE_CONVERSION_JOB_TTL_MS = Number(process.env.VEHICLE_CONVERSION_JOB_TTL_MS || 6 * 60 * 60 * 1000);
 
 app.use(cors());
 app.use(express.text({ type: ['text/*','application/json'], limit: '25mb' }));
@@ -780,6 +782,121 @@ async function finalizeVehicleUploadArchive_(archiveInput, vehicleId, originalNa
   };
 }
 
+async function finalizeVehicleUploadArchiveWithProgress_(archiveInput, vehicleId, originalName, onPhase) {
+  onPhase?.('extracting', 15);
+  const extracted = await extractVehicleZip_(archiveInput, vehicleId, originalName || 'source.zip');
+  onPhase?.('converting', 45);
+  const finalized = await finalizeVehicleModelConversion_(extracted.safeId, extracted.sourceDir, extracted.root.full);
+  onPhase?.('cleanup', 88);
+  const deletedSourceArchives = finalized.conversion.ok ? await deleteVehicleSourceArchives_(extracted.root.full) : [];
+  const manifest = Object.assign({}, extracted.manifest, {
+    conversion: finalized.conversion,
+    glb: finalized.glb,
+    rawSources: finalized.rawSources,
+    sourceZip: deletedSourceArchives.length ? '' : extracted.manifest.sourceZip,
+    sourceArchiveDeleted: deletedSourceArchives.length ? now_() : ''
+  });
+  await fs.writeFile(path.join(extracted.root.full, 'manifest.json'), JSON.stringify(manifest, null, 2));
+  return {
+    ok: true,
+    vehicleId: extracted.safeId,
+    manifest: assetWebPath_(`vehicles/models/${extracted.safeId}/manifest.json`),
+    sourceZip: manifest.sourceZip,
+    sourceArchiveDeleted: manifest.sourceArchiveDeleted,
+    sourceDir: manifest.sourceDir,
+    glb: manifest.glb,
+    rawSources: manifest.rawSources,
+    conversion: manifest.conversion
+  };
+}
+
+function publicVehicleConversionJob_(job) {
+  if (!job) return null;
+  return {
+    ok: job.status !== 'failed',
+    jobId: job.id,
+    status: job.status,
+    phase: job.phase,
+    progress: job.progress,
+    vehicleId: job.vehicleId,
+    fileName: job.fileName,
+    createdAt: job.createdAt,
+    startedAt: job.startedAt,
+    updatedAt: job.updatedAt,
+    finishedAt: job.finishedAt,
+    error: job.error,
+    result: job.result
+  };
+}
+
+function pruneVehicleConversionJobs_() {
+  const cutoff = Date.now() - VEHICLE_CONVERSION_JOB_TTL_MS;
+  for (const [id, job] of vehicleConversionJobs.entries()) {
+    if (job.finishedAt && Date.parse(job.finishedAt) < cutoff) {
+      vehicleConversionJobs.delete(id);
+    }
+  }
+}
+
+function startVehicleConversionJob_({ archiveInput, vehicleId, originalName, cleanupDir = '' }) {
+  pruneVehicleConversionJobs_();
+  const safeId = safeVehicleAssetId_(vehicleId || path.basename(originalName || 'vehicle', path.extname(originalName || '')));
+  const id = `veh_${Date.now()}_${crypto.randomBytes(6).toString('hex')}`;
+  const job = {
+    id,
+    status: 'queued',
+    phase: 'queued',
+    progress: 0,
+    vehicleId: safeId,
+    fileName: originalName || 'source.zip',
+    createdAt: now_(),
+    updatedAt: now_(),
+    startedAt: '',
+    finishedAt: '',
+    error: '',
+    result: null
+  };
+  vehicleConversionJobs.set(id, job);
+
+  setImmediate(async () => {
+    try {
+      Object.assign(job, {
+        status: 'running',
+        phase: 'extracting',
+        progress: 15,
+        startedAt: now_(),
+        updatedAt: now_()
+      });
+      const result = await finalizeVehicleUploadArchiveWithProgress_(archiveInput, safeId, originalName || 'source.zip', (phase, progress) => {
+        Object.assign(job, { phase, progress, updatedAt: now_() });
+      });
+      Object.assign(job, {
+        status: 'succeeded',
+        phase: result.conversion?.ok ? 'converted' : 'stored-source',
+        progress: 100,
+        updatedAt: now_(),
+        finishedAt: now_(),
+        result: Object.assign({ complete: true }, result)
+      });
+    } catch (err) {
+      Object.assign(job, {
+        status: 'failed',
+        phase: 'failed',
+        progress: 100,
+        updatedAt: now_(),
+        finishedAt: now_(),
+        error: err.message || String(err)
+      });
+    } finally {
+      if (cleanupDir) {
+        await fs.rm(cleanupDir, { recursive: true, force: true }).catch(() => {});
+      }
+    }
+  });
+
+  return publicVehicleConversionJob_(job);
+}
+
 app.get('/api/files/assets', async (req, res) => {
   try {
     await fs.mkdir(ASSET_ROOT, { recursive: true });
@@ -1062,9 +1179,30 @@ app.post('/api/vehicles/model/upload-chunk', express.raw({ type: 'application/oc
     } finally {
       await handle.close();
     }
-    const result = await finalizeVehicleUploadArchive_(assembledFile, vehicleId, fileName);
-    await fs.rm(sessionDir, { recursive: true, force: true });
-    return res.json(Object.assign({ complete: true }, result));
+    const job = startVehicleConversionJob_({ archiveInput: assembledFile, vehicleId, originalName: fileName, cleanupDir: sessionDir });
+    return res.json({
+      ok: true,
+      complete: true,
+      conversionPending: true,
+      received: present.length,
+      total,
+      jobId: job.jobId,
+      job
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message || String(err) });
+  }
+});
+
+app.get('/api/vehicles/model/jobs/:jobId', async (req, res) => {
+  try {
+    const admin = requireLmiAdmin_(req, res, 'Admin account required to view vehicle conversion jobs.');
+    if (!admin) return;
+    pruneVehicleConversionJobs_();
+    const jobId = String(req.params.jobId || '').replace(/[^a-zA-Z0-9._-]+/g, '').slice(0, 96);
+    const job = vehicleConversionJobs.get(jobId);
+    if (!job) return res.status(404).json({ ok: false, error: 'Vehicle conversion job not found.' });
+    return res.json(publicVehicleConversionJob_(job));
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message || String(err) });
   }
