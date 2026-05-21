@@ -1,4 +1,5 @@
 pub mod packet;
+pub mod auth;
 
 use axum::{extract::State, routing::{get, post}, Json, Router};
 use serde::Serialize;
@@ -8,6 +9,7 @@ use crate::{core, db, storage};
 pub fn router() -> Router<core::AppState> {
     Router::new()
         .route("/status", get(status))
+        .route("/auth/login", post(auth::login))
         .route("/packet", post(packet::packet))
         .route("/packet/batch", post(packet::packet_batch))
         .route("/debug/bus", get(packet::debug_bus))

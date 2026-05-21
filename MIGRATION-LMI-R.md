@@ -60,6 +60,10 @@ LMI Ver. 19.2.1.1.2212
 
 The banner is normal terminal output and can be removed with `clear`.
 
+Unauthenticated users now land on the LMI-R Access Portal. The first successful login checks the legacy LMI `core` sheet in `brokensynapse.sqlite` and imports only login credentials plus the minimum identity/admin metadata needed to create a personal terminal home. Non-admin users are clamped to `/lmi-r/os/users/[username]`; admin-tagged accounts start at `/lmi-r/os`.
+
+The terminal emulates a small fish-like session: command history is kept only in browser memory, ArrowUp/ArrowDown recall commands, Tab completes from the LMI command table, and entered commands get basic syntax coloring for command groups, subcommands, flags, paths, and app/package names.
+
 `/lmi` continues to be the production app and should be migrated module by module only after compatibility contracts are clear.
 
 ## LMI Bus
@@ -73,6 +77,16 @@ Current terminal proof points:
 - `Fleetline.LMX` receives `asset:selected` without importing Sift.
 - `bus` makes `DataForge.LMX` request a bus debug snapshot through `ctx.callAction('debug.bus')`.
 - `de list` and `de install <id>` reserve a path for future standalone desktop environments while keeping the terminal as the base interface.
+
+Command group labels:
+
+- `lx`: package/profile binding manager
+- `lmx`: app/module launcher
+- `shell`: DE/shell manager
+- `sys`: runtime/system manager
+- `svc`: services
+- `perm`: permissions
+- `Lfetch`: identity/neofetch
 
 The Rust backend remains generic: it accepts packets, logs packets to `event_log`, and persists compact state in `entity` plus `entity_state`.
 

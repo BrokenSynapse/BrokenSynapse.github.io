@@ -18,12 +18,14 @@ async fn main() -> anyhow::Result<()> {
 
     let bind = env::var("LMI_R_BIND").unwrap_or_else(|_| "0.0.0.0:3100".to_string());
     let database_path = env::var("LMI_R_DB").unwrap_or_else(|_| "../data/lmi-r.sqlite".to_string());
+    let legacy_database_path = env::var("LMI_R_LEGACY_DB").unwrap_or_else(|_| "../data/brokensynapse.sqlite".to_string());
     let db = db::connect(&database_path).await?;
     db::migrate(&db).await?;
 
     let state = core::AppState {
         db,
         database_path,
+        legacy_database_path,
         started_at: core::unix_ms(),
     };
 

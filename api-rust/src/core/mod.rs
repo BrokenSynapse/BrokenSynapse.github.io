@@ -10,6 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub struct AppState {
     pub db: SqlitePool,
     pub database_path: String,
+    pub legacy_database_path: String,
     pub started_at: i64,
 }
 

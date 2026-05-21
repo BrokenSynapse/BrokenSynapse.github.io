@@ -43,6 +43,7 @@ services:
     environment:
       LMI_R_BIND: 0.0.0.0:3100
       LMI_R_DB: /data/lmi-r.sqlite
+      LMI_R_LEGACY_DB: /data/brokensynapse.sqlite
     volumes:
       - ./data:/data
 

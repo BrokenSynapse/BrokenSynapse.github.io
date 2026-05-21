@@ -10,8 +10,18 @@ export interface StatusResponse {
   now: number;
 }
 
+export interface LoginUser {
+  username: string;
+  cid: string;
+  display_name: string;
+  is_admin: boolean;
+  home_path: string;
+  shell: string;
+}
+
 export interface ApiClient {
   status(): Promise<StatusResponse>;
+  login(username: string, password: string): Promise<LoginUser>;
   packet(packet: LmiPacket): Promise<LmiPacket>;
   packetBatch(packets: LmiPacket[]): Promise<LmiPacket[]>;
 }
@@ -45,6 +55,10 @@ export function createApiClient(baseUrl: string): ApiClient {
 
   return {
     status: () => getJson<StatusResponse>('/status'),
+    login: async (username, password) => {
+      const response = await postJson<{ ok: boolean; user: LoginUser }>('/auth/login', { username, password });
+      return response.user;
+    },
     packet: (packet) => postJson<LmiPacket>('/packet', packet),
     packetBatch: (packets) => postJson<LmiPacket[]>('/packet/batch', packets)
   };
