@@ -115,6 +115,8 @@ pre {
   border: 0;
   background: transparent;
   vertical-align: baseline;
+  outline: none;
+  cursor: text;
 }
 
 .terminal-input small {
@@ -244,39 +246,30 @@ pre {
   flex: 0 0 auto;
 }
 
-.terminal-input input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: transparent !important;
-  -webkit-text-fill-color: transparent;
-  caret-color: #d9fff5;
-  padding: 0;
-  box-shadow: none;
-  appearance: none;
-  z-index: 2;
-}
-
-.terminal-command-wrap {
-  position: relative;
-  display: inline-block;
-  width: min(72ch, calc(100vw - 260px));
-  min-width: 12ch;
-  min-height: 1.45em;
-  vertical-align: baseline;
-}
-
 .terminal-command-mirror {
   position: relative;
   z-index: 1;
   display: inline-block;
   min-width: 1ch;
+  min-height: 1.45em;
   white-space: pre;
   color: #d9fff5;
   pointer-events: none;
+}
+
+.terminal-input:focus .terminal-command-mirror::after {
+  content: "";
+  display: inline-block;
+  width: 0.58ch;
+  height: 1.05em;
+  margin-left: 1px;
+  background: #d9fff5;
+  vertical-align: -0.12em;
+  animation: lmi-caret 1s steps(1) infinite;
+}
+
+@keyframes lmi-caret {
+  50% { opacity: 0; }
 }
 
 .fatal {

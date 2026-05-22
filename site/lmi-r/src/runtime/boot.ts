@@ -35,6 +35,7 @@ type TerminalState = {
   history: string[];
   historyIndex: number;
   suggestion: string;
+  currentInput: string;
 };
 
 const BANNER = ['LMI Ver. 19.2.1.1.2212', '\u00a9 Leviathan Exports Company.', ''];
@@ -113,7 +114,8 @@ export function createRuntime(parts: RuntimeParts) {
     fs: new Map(),
     history: [],
     historyIndex: 0,
-    suggestion: ''
+    suggestion: '',
+    currentInput: ''
   };
   let currentStatus: StatusResponse | null = null;
   let currentStatusText = 'Checking Rust backend...';
@@ -218,13 +220,10 @@ function renderTerminal(parts: RuntimeParts, terminal: TerminalState, user: Logi
         <section class="terminal-window" aria-label="LMI-R terminal" data-service="${escapeHtml(status?.service ?? 'offline')}" data-status="${escapeHtml(statusText)}">
           <div id="terminalOutput" class="terminal-output">
             ${terminal.lines.map(renderLine).join('')}
-            <form id="terminalForm" class="terminal-input">
+            <div id="terminalPrompt" class="terminal-input" tabindex="0">
               <span>${escapeHtml(user.username)}@lmi-r:${escapeHtml(shortPwd(terminal.cwd, user))}$</span>
-              <span class="terminal-command-wrap">
-                <span id="terminalCommandMirror" class="terminal-command-mirror" aria-hidden="true"></span>
-                <input id="terminalCommand" autocomplete="off" spellcheck="false" autofocus>
-              </span>
-            </form>
+              <span id="terminalCommandMirror" class="terminal-command-mirror">${terminal.currentInput ? highlightCommand(terminal.currentInput) : '&nbsp;'}</span>
+            </div>
           </div>
         </section>
     </main>
@@ -258,17 +257,16 @@ function wireTerminal(
 ): void {
   const output = root.querySelector<HTMLElement>('#terminalOutput');
   output?.scrollTo({ top: output.scrollHeight });
-  const form = root.querySelector<HTMLFormElement>('#terminalForm');
-  const input = root.querySelector<HTMLInputElement>('#terminalCommand');
+  const prompt = root.querySelector<HTMLElement>('#terminalPrompt');
   const mirror = root.querySelector<HTMLElement>('#terminalCommandMirror');
   const syncInput = () => {
-    if (mirror && input) mirror.innerHTML = input.value ? highlightCommand(input.value) : '&nbsp;';
-    terminal.suggestion = input ? complete(input.value, false) : '';
+    if (mirror) mirror.innerHTML = terminal.currentInput ? highlightCommand(terminal.currentInput) : '&nbsp;';
+    terminal.suggestion = complete(terminal.currentInput, false);
   };
   syncInput();
-  input?.focus();
+  prompt?.focus({ preventScroll: true });
   const focusCommand = () => {
-    input?.focus({ preventScroll: true });
+    prompt?.focus({ preventScroll: true });
     output?.scrollTo({ top: output.scrollHeight });
   };
   root.addEventListener('pointerdown', (event) => {
@@ -278,44 +276,53 @@ function wireTerminal(
     focusCommand();
   });
   output?.addEventListener('pointerdown', (event) => {
-    const target = event.target as HTMLElement | null;
-    if (target?.closest('#terminalCommand')) return;
     event.preventDefault();
     focusCommand();
   });
-  form?.addEventListener('pointerdown', () => focusCommand());
 
-  input?.addEventListener('input', () => {
+  prompt?.addEventListener('paste', (event) => {
+    event.preventDefault();
+    terminal.currentInput += event.clipboardData?.getData('text/plain') ?? '';
     syncInput();
   });
-  input?.addEventListener('keydown', (event) => {
+  prompt?.addEventListener('keydown', (event) => {
     if (event.key === 'ArrowUp') {
       event.preventDefault();
       terminal.historyIndex = Math.max(0, terminal.historyIndex - 1);
-      input.value = terminal.history[terminal.historyIndex] ?? input.value;
+      terminal.currentInput = terminal.history[terminal.historyIndex] ?? terminal.currentInput;
       syncInput();
     } else if (event.key === 'ArrowDown') {
       event.preventDefault();
       terminal.historyIndex = Math.min(terminal.history.length, terminal.historyIndex + 1);
-      input.value = terminal.history[terminal.historyIndex] ?? '';
+      terminal.currentInput = terminal.history[terminal.historyIndex] ?? '';
       syncInput();
     } else if (event.key === 'Tab') {
       event.preventDefault();
-      const next = complete(input.value, true);
-      if (next) input.value = next;
+      const next = complete(terminal.currentInput, true);
+      if (next) terminal.currentInput = next;
+      syncInput();
+    } else if (event.key === 'Backspace') {
+      event.preventDefault();
+      terminal.currentInput = terminal.currentInput.slice(0, -1);
+      syncInput();
+    } else if (event.key === 'Delete') {
+      event.preventDefault();
+      terminal.currentInput = '';
+      syncInput();
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      const command = terminal.currentInput.trim();
+      if (!command) return;
+      terminal.history.push(command);
+      terminal.historyIndex = terminal.history.length;
+      terminal.suggestion = '';
+      terminal.currentInput = '';
+      void runCommand(command, parts, contexts, terminal, user, status, statusText, logout).then(rerender);
+    } else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      event.preventDefault();
+      terminal.currentInput += event.key;
       syncInput();
     }
-  });
-
-  form?.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const command = input?.value.trim() ?? '';
-    if (!command) return;
-    terminal.history.push(command);
-    terminal.historyIndex = terminal.history.length;
-    terminal.suggestion = '';
-    if (input) input.value = '';
-    void runCommand(command, parts, contexts, terminal, user, status, statusText, logout).then(rerender);
   });
 }
 
