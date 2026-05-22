@@ -81,7 +81,7 @@ INSERT OR IGNORE INTO dict(group_id, id, value) VALUES
   (1, 10, 'vehicle'),
   (1, 11, 'module'),
   (2, 1, 'json'),
-  (2, 2, 'messagepack'),
+  (2, 2, 'messagepack-reserved'),
   (2, 3, 'cbor-reserved'),
   (3, 1, 'text'),
   (3, 2, 'integer'),
@@ -90,5 +90,4 @@ INSERT OR IGNORE INTO dict(group_id, id, value) VALUES
   (4, 1, 'created'),
   (4, 2, 'updated'),
   (5, 1, 'application/json'),
-  (5, 2, 'application/x-msgpack'),
-  (5, 3, 'application/octet-stream');
+  (5, 2, 'application/octet-stream');
