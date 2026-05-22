@@ -18,7 +18,7 @@ interface RuntimeParts {
   modules: ModuleRegistry;
 }
 
-type TerminalLine = { kind: 'system' | 'input' | 'output' | 'error'; text: string };
+type TerminalLine = { kind: 'system' | 'input' | 'output' | 'error' | 'lfetch'; text: string };
 type FsEntry = { type: 'file' | 'dir'; content?: string; created: number };
 
 type TerminalState = {
@@ -38,6 +38,50 @@ type TerminalState = {
 };
 
 const BANNER = ['LMI Ver. 19.2.1.1.2212', '\u00a9 Leviathan Exports Company.', ''];
+const LFETCH_ART = String.raw`
+                                        -
+                      #######   %=-     =:-
+                 +==-----:-::--=+*+-:=  +=:-                         #+======-===+#@
+             #+=--::.:...........:+#=:.=%*=:.=                  %*=--:::....:....::-=+#
+           +==-:.:::....:..........-##=:.:+*=.:===            +=-:.:.....:...::......::=+%
+         +=-::.......:------:::::.::=+#*=::.=+=.-=-=       ++-:........::::::..:..::::..:-+%
+       *+-::.....:--==********+++=--=*+-:=+-:.:=-.---*   *+-::..:.:--==+++*++==-:::.......:-+
+     #+=--:..-:-=+**#**#####*##++##*++#%*+---:::....::=@*=-:...:-=+*#*=*####*+***+--:......:-+#
+    @+=-:....-=+**+#%@@@@@@@@@@@@%*+#%#+-:=*:..-+-.....-+-:..--+*#+*%@@@@@@@@@@%#*#+=-:.-:..:-=
+   @*=-:-..:-+**+%@@@@@@@ @@@@@@@@@@%#%%###=-:..-#*-:...-=::-=***@@@@@@@@@@@@@@@@@%*#*=-:....:-+
+   *+-:.:.:-=*+*@@@@             @@@@@@%%##*==-:::-:=+-..+=+*##@@@@@            @@@@#**+-::...:=+
+  #++-::..:=*=#@@@                   @@@@#***+==+===---:..=##@@@@                 @@@%+*+-:...::+*
+ %*+=::.:--+=#@@@                       @@@#%*+=# **+=-:-=::*@@                    @@@%+*=:.:..:=+
+ #*+=:.:.:==*@@@                           @%#*+=@%%@@#++==+*                       @@@#++-:...:=*#
+ #*+-:..::==#@@@                            @@#+=+**-+*%%#*#                        @@@%++-.:..:-+*
+ #*+-::..:=-#@@@                            @@@#++*+:::=#@@@                        @@@@*=-:..::=+#
+ #*+=-..:.--*@@@                           @@@%%%@%*=:..-=%@@                       @@@%==-....-=+#
+ #**=-::..--+@@@                          @@@**+*#%#+-:.:.-#@@                      @@@#=-::..:-+*#
+ %#*+-:..:.--*@@@                        @@%+-::-+#%#+-:..:-*@@@                   @@@%==:...::=+#@
+ @%**=-:...:-=#@@@                     @@%*-::::=+#@%*+::...:-#@@                 @@@%+=:..:.:=+*#
+  @#**=:::::.:-*@@@                  @@@*=-:..:-=#%@@%*+-:....:+%@@@            @@@@%+-:...:-=+*#@
+  @@#*+=-:.....-=%@@@              @@@*=-:.:.:-+##%@@@%#*-:::-:::=%@@@@       @@@@%+=:::::.:=**#@
+   @@#**+-:::.:.::=*%@@@@@    @@@@@#+-::..::-=*##%@  @@#**+-::....:-+%@@@@@@@@@%#=-:..:.::-++*#@@
+    @@#***+=:::....::=+*#%%%%%#*+=-:::..::--+*##@@    @@%***=-:......:::-===---::......:-=+**%@@
+     @@%+**++-::.:..:....::::::...:....:-=+###%@       @@@#*#*=-::.:....:...:.....:::--=+***%@@
+      @@@%+##*+=-:::.:::...:...:::.::--=+*#*%@@         @@@@**#**=---:.:..-..:-.:::==+**#*%@@@
+       @@@@#+*###*+=---:--:::--:---++**###%@@@            @@@@**##**++===---=---=+**##*+%@@@@
+         @@@@%*+*####****++++++***##***%@@@@                @@@@%*#####********###***#@@@@@
+           @@@@@@##*++**#*###***+*##%@@@@@                    @@@@@@%%#**+++++*###%@@@@@@
+              @@@@@@@@@%%%%%%%@@@@@@@@@                           @@@@@@@@@@@@@@@@@@@@
+                  @@@@@@@@@@@@@@@@@                                      @@@@@@@@
+
+               @@@                       @@@               @@@@             @@
+              @=::@@                   @*::-@@           @@+::=@          @*::@
+             @@=..@@                  @@+...:#@         @%-...=@@        @@*..@@
+             @@=..@@                  @@+.-*..+@@     @@#..+:.=@@        @@*..@@
+             @@=..@@                  @@+.-@%-.-%@   @%=.:#@:.=@@        @@*..@@
+             @@=..@@                  @@+.-@@@+..*@@@%:.-@@@:.=@@        @@*..@@
+             @@=..@@                  @@+.-@@@@%..=%*..#@@@@:.=@@        @@*..@@
+              @=..%%%%%%%%%%#%  @##@  @@+.-@@ @@@=...-%@@ @@:.=@@  %*#@  @@*..@@  @##@
+              @=............:# @*:.%@  @+.-@@   @@*.+@@@  @@:.=@  @+.:@   @*..@@ @*.-%@
+              @@@@@@@@@@@@@@@@  @@@@   @@@@@     @@@@@     @@@@@   @@@@   @@@@@   @@@@
+`.trimEnd();
 
 const COMMANDS = [
   'help', 'clear', 'exit', 'reboot', 'whoami', 'uptime', 'date', 'Lfetch',
@@ -169,16 +213,9 @@ function wireLogin(root: HTMLElement, parts: RuntimeParts, onLogin: (user: Login
 }
 
 function renderTerminal(parts: RuntimeParts, terminal: TerminalState, user: LoginUser, status: StatusResponse | null, statusText: string): string {
-  const appList = parts.modules.list().map((module) => `<span>${module.id}</span>`).join('');
   return `
     <main class="terminal-shell" data-theme="${parts.theme.id}">
-      <section class="terminal-head">
-        <div><p class="eyebrow">Leviathan Mainframe Interface</p><h1>LMI-R Terminal</h1></div>
-        <div class="session"><span>${escapeHtml(user.display_name || user.username)}</span><strong>${escapeHtml(status?.service ?? 'offline')}</strong></div>
-      </section>
-      <section class="terminal-layout">
-        <section class="terminal-window" aria-label="LMI-R terminal">
-          <div class="terminal-titlebar"><span>lmi-r://terminal</span><span>${escapeHtml(statusText)}</span></div>
+        <section class="terminal-window" aria-label="LMI-R terminal" data-service="${escapeHtml(status?.service ?? 'offline')}" data-status="${escapeHtml(statusText)}">
           <div id="terminalOutput" class="terminal-output">${terminal.lines.map(renderLine).join('')}</div>
           <form id="terminalForm" class="terminal-input">
             <span>${escapeHtml(user.username)}@lmi-r:${escapeHtml(shortPwd(terminal.cwd, user))}$</span>
@@ -186,16 +223,12 @@ function renderTerminal(parts: RuntimeParts, terminal: TerminalState, user: Logi
             <small id="terminalSuggestion">${escapeHtml(terminal.suggestion)}</small>
           </form>
         </section>
-        <aside class="terminal-side">
-          <section><h2>Apps</h2><div class="app-list">${appList}</div></section>
-          <section><h2>Active</h2><strong>${escapeHtml(terminal.activeApp)}</strong><p>cwd: ${escapeHtml(terminal.cwd)}</p>${renderActiveApp(terminal)}</section>
-        </aside>
-      </section>
     </main>
   `;
 }
 
 function renderLine(line: TerminalLine): string {
+  if (line.kind === 'lfetch') return `<div class="term-line lfetch">${line.text}</div>`;
   const text = line.kind === 'input' ? highlightCommand(line.text) : escapeHtml(line.text);
   return `<div class="term-line ${line.kind}">${text}</div>`;
 }
@@ -297,7 +330,7 @@ async function runCommand(
   if (lower === 'clear') { terminal.lines = []; return; }
   if (lower === 'exit') { logout(); return; }
   if (lower === 'reboot') { location.reload(); return; }
-  if (op === 'Lfetch' || lower === 'neofetch') { pushBlock(terminal, neofetch(parts, terminal, user, status, statusText)); return; }
+  if (op === 'Lfetch' || lower === 'neofetch') { pushLfetch(terminal, buildLfetch(parts, terminal, user, status, statusText)); return; }
   if (lower === 'apps') { pushBlock(terminal, parts.modules.list().map((module) => `${module.id.padEnd(10)} ${module.name} [${module.phase}]`)); return; }
   if (lower === 'whoami') { pushBlock(terminal, [`username: ${user.username}`, `cid: ${user.cid || 'none'}`, `admin: ${user.is_admin ? 'yes' : 'no'}`, `home: ${user.home_path}`]); return; }
   if (lower === 'uptime') { pushLine(terminal, 'output', 'session active in browser runtime'); return; }
@@ -389,23 +422,49 @@ function debugCommand(args: string[], terminal: TerminalState, parts: RuntimePar
   else pushLine(terminal, 'system', `debug ${what}: see bus command for packet view`);
 }
 
-function neofetch(parts: RuntimeParts, terminal: TerminalState, user: LoginUser, status: StatusResponse | null, statusText: string): string[] {
-  return [
-    '      __    __  __  __   ___        ___',
-    '     / /   /  |/  |/ /  / _ \\ ____ / _ \\',
-    '    / /__ / /|_/| / /__/ , _//___// , _/',
-    '   /____//_/   /_/____/_/|_|     /_/|_|',
+function buildLfetch(parts: RuntimeParts, terminal: TerminalState, user: LoginUser, status: StatusResponse | null, statusText: string): string {
+  const started = status?.started_at ? Date.now() - status.started_at : performance.now();
+  const details = [
+    `<span class="lfetch-user">${escapeHtml(user.username)}@brokensynapse-us</span>`,
+    `<span class="lfetch-rule">--------------------------</span>`,
+    field('OS', 'LMI Ver. 19.2.1.1.2212'),
+    field('Host', `[${escapeHtml(user.cid || 'acc_name')}] [${hashAccount(user.username)}]`),
+    field('Kernel', 'Linux 19.2.1-22-generic'),
+    field('Uptime', formatDuration(started)),
+    field('Packages', `${parts.modules.list().length} (lmx)`),
+    field('Shell', 'fish 19.2.1'),
+    field('Terminal', '/dev/pts/0'),
+    field('CPU', 'LXC Trinity 2200 (96) @ 9800 MHz'),
+    field('GPU', 'JI Cashout 3301'),
+    field('Memory', 'cache / 3072 GiB (cache/GiB%)'),
+    field('Disk (/)', '36.82 GiB / 245.02 GiB (<span class="lfetch-green">15%</span>) - xfs'),
+    field('Local IP (enp0s3)', 'reported by browser/network layer'),
+    field('Locale', `${navigator.language || 'browser'} [${Intl.DateTimeFormat().resolvedOptions().timeZone || 'local'}]`),
     '',
-    'OS: LMI Ver. 19.2.1.1.2212',
-    `Host: ${user.username}`,
-    'Kernel: LMI Bus packet layer',
-    'Shell: fish 19.2.1',
-    `Backend: ${statusText}`,
-    `Service: ${status?.service ?? 'offline'}`,
-    `Apps: ${parts.modules.list().map((module) => module.id).join(', ')}`,
-    `CWD: ${terminal.cwd}`,
-    `DE: terminal`
+    '<span class="lfetch-swatches"><i style="--c:#4a4a4a"></i><i style="--c:#e84242"></i><i style="--c:#12b826"></i><i style="--c:#d4b80f"></i><i style="--c:#174fe0"></i><i style="--c:#8e1fb2"></i><i style="--c:#38a2d7"></i><i style="--c:#d8d8d8"></i></span>',
+    '<span class="lfetch-swatches"><i style="--c:#777"></i><i style="--c:#ff5d5d"></i><i style="--c:#24d43a"></i><i style="--c:#fff38a"></i><i style="--c:#6285ff"></i><i style="--c:#cd18bf"></i><i style="--c:#79dde0"></i><i style="--c:#fff"></i></span>'
   ];
+  return `<div class="lfetch-grid"><pre>${escapeHtml(LFETCH_ART)}</pre><pre>${details.join('\n')}</pre></div>`;
+}
+
+function field(label: string, value: string): string {
+  return `<span class="lfetch-label">${label}:</span> ${value}`;
+}
+
+function hashAccount(value: string): string {
+  let hash = 0;
+  for (const char of value) hash = (Math.imul(31, hash) + char.charCodeAt(0)) | 0;
+  return Math.abs(hash).toString(16).padStart(5, '0').slice(0, 5);
+}
+
+function formatDuration(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  if (hours) return `${hours}h ${minutes}m ${seconds}s`;
+  if (minutes) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
 }
 
 function seedUserFs(terminal: TerminalState, user: LoginUser, parts: RuntimeParts): void {
@@ -562,6 +621,11 @@ function pushLine(terminal: TerminalState, kind: TerminalLine['kind'], text: str
 
 function pushBlock(terminal: TerminalState, lines: string[]): void {
   lines.forEach((line) => pushLine(terminal, 'output', line));
+}
+
+function pushLfetch(terminal: TerminalState, html: string): void {
+  terminal.lines.push({ kind: 'lfetch', text: html });
+  if (terminal.lines.length > 160) terminal.lines.splice(0, terminal.lines.length - 160);
 }
 
 function escapeHtml(value: string): string {
