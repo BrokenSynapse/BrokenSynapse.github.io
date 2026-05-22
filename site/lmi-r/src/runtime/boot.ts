@@ -216,11 +216,13 @@ function renderTerminal(parts: RuntimeParts, terminal: TerminalState, user: Logi
   return `
     <main class="terminal-shell" data-theme="${parts.theme.id}">
         <section class="terminal-window" aria-label="LMI-R terminal" data-service="${escapeHtml(status?.service ?? 'offline')}" data-status="${escapeHtml(statusText)}">
-          <div id="terminalOutput" class="terminal-output">${terminal.lines.map(renderLine).join('')}</div>
-          <form id="terminalForm" class="terminal-input">
-            <span>${escapeHtml(user.username)}@lmi-r:${escapeHtml(shortPwd(terminal.cwd, user))}$</span>
-            <input id="terminalCommand" autocomplete="off" spellcheck="false" autofocus>
-          </form>
+          <div id="terminalOutput" class="terminal-output">
+            ${terminal.lines.map(renderLine).join('')}
+            <form id="terminalForm" class="terminal-input">
+              <span>${escapeHtml(user.username)}@lmi-r:${escapeHtml(shortPwd(terminal.cwd, user))}$</span>
+              <input id="terminalCommand" autocomplete="off" spellcheck="false" autofocus>
+            </form>
+          </div>
         </section>
     </main>
   `;
@@ -329,7 +331,7 @@ async function runCommand(
   if (lower === 'clear') { terminal.lines = []; return; }
   if (lower === 'exit') { logout(); return; }
   if (lower === 'reboot') { location.reload(); return; }
-  if (op === 'Lfetch' || lower === 'neofetch') { pushLfetch(terminal, buildLfetch(parts, terminal, user, status, statusText)); return; }
+  if (lower === 'lfetch' || lower === 'neofetch') { pushLfetch(terminal, buildLfetch(parts, terminal, user, status, statusText)); return; }
   if (lower === 'apps') { pushBlock(terminal, parts.modules.list().map((module) => `${module.id.padEnd(10)} ${module.name} [${module.phase}]`)); return; }
   if (lower === 'whoami') { pushBlock(terminal, [`username: ${user.username}`, `cid: ${user.cid || 'none'}`, `admin: ${user.is_admin ? 'yes' : 'no'}`, `home: ${user.home_path}`]); return; }
   if (lower === 'uptime') { pushLine(terminal, 'output', 'session active in browser runtime'); return; }
