@@ -35,6 +35,9 @@ type TerminalState = {
   history: string[];
   historyIndex: number;
   suggestion: string;
+  completionKey: string;
+  completionIndex: number;
+  completionApplied: string;
   currentInput: string;
 };
 
@@ -98,6 +101,11 @@ const COMMANDS = [
   'kill', 'doas', 'neofetch', 'apps', 'status', 'save', 'asset demo', 'bus', 'de list', 'de install'
 ];
 
+const APP_IDS = ['settings', 'sift', 'fleetline', 'dataforge'];
+const SERVICE_IDS = ['api-rust', 'api', 'caddy', 'bus', 'storage'];
+const CAPABILITY_IDS = ['state:read', 'state:write', 'entity:read', 'entity:write', 'asset:read', 'asset:write', 'debug:read'];
+const COMPLETION_ORDER = ['lx -h', 'help', 'Lfetch'];
+
 export function createRuntime(parts: RuntimeParts) {
   const bus = new LmiBus(parts.api, parts.modules);
   const contexts = new Map(parts.modules.list().map((module) => [module.id, createModuleContext(module.id, bus)]));
@@ -115,6 +123,9 @@ export function createRuntime(parts: RuntimeParts) {
     history: [],
     historyIndex: 0,
     suggestion: '',
+    completionKey: '',
+    completionIndex: 0,
+    completionApplied: '',
     currentInput: ''
   };
   let currentStatus: StatusResponse | null = null;
@@ -263,8 +274,13 @@ function wireTerminal(
   const ghost = root.querySelector<HTMLElement>('#terminalCompletionGhost');
   const syncInput = () => {
     if (mirror) mirror.innerHTML = terminal.currentInput ? highlightCommand(terminal.currentInput) : '&nbsp;';
-    terminal.suggestion = suggestCompletion(terminal.currentInput);
+    terminal.suggestion = suggestCompletion(terminal);
     if (ghost) ghost.textContent = terminal.suggestion;
+  };
+  const resetCompletion = () => {
+    terminal.completionKey = '';
+    terminal.completionIndex = 0;
+    terminal.completionApplied = '';
   };
   syncInput();
   prompt?.focus({ preventScroll: true });
@@ -286,6 +302,7 @@ function wireTerminal(
   prompt?.addEventListener('paste', (event) => {
     event.preventDefault();
     terminal.currentInput += event.clipboardData?.getData('text/plain') ?? '';
+    resetCompletion();
     syncInput();
   });
   const handleKey = (event: KeyboardEvent) => {
@@ -301,16 +318,17 @@ function wireTerminal(
       syncInput();
     } else if (event.key === 'Tab') {
       event.preventDefault();
-      const next = applyCompletion(terminal.currentInput);
-      if (next) terminal.currentInput = next;
+      applyCompletion(terminal);
       syncInput();
     } else if (event.key === 'Backspace') {
       event.preventDefault();
       terminal.currentInput = terminal.currentInput.slice(0, -1);
+      resetCompletion();
       syncInput();
     } else if (event.key === 'Delete') {
       event.preventDefault();
       terminal.currentInput = '';
+      resetCompletion();
       syncInput();
     } else if (event.key === 'Enter') {
       event.preventDefault();
@@ -319,11 +337,13 @@ function wireTerminal(
       terminal.history.push(command);
       terminal.historyIndex = terminal.history.length;
       terminal.suggestion = '';
+      resetCompletion();
       terminal.currentInput = '';
       void runCommand(command, parts, contexts, terminal, user, status, statusText, logout).then(rerender);
     } else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
       event.preventDefault();
       terminal.currentInput += event.key;
+      resetCompletion();
       syncInput();
     }
   };
@@ -577,28 +597,86 @@ function shortPwd(path: string, user: LoginUser): string {
   return path.startsWith(`${user.home_path}/`) ? `~/${path.slice(user.home_path.length + 1)}` : path;
 }
 
-function completionMatches(value: string): string[] {
-  const trimmed = value.trimStart();
-  if (!trimmed) return COMMANDS.slice(0, 8);
-  return COMMANDS.filter((cmd) => cmd.toLowerCase().startsWith(trimmed.toLowerCase()));
+type CompletionPlan = { key: string; matches: string[] };
+
+function suggestCompletion(terminal: TerminalState): string {
+  const plan = completionPlan(terminal.currentInput);
+  if (!plan.matches.length) return '';
+  const index = terminal.completionKey === plan.key ? terminal.completionIndex % plan.matches.length : 0;
+  const candidate = plan.matches[index] ?? plan.matches[0];
+  return candidate.toLowerCase().startsWith(terminal.currentInput.toLowerCase()) ? candidate.slice(terminal.currentInput.length) : '';
 }
 
-function suggestCompletion(value: string): string {
-  const trimmed = value.trimStart();
-  if (!trimmed) return '';
-  const matches = completionMatches(value);
-  if (matches.length === 1) return matches[0].slice(trimmed.length);
-  return '';
+function applyCompletion(terminal: TerminalState): void {
+  const plan = completionPlan(terminal.currentInput);
+  if (!plan.matches.length) return;
+  const sameCycle = terminal.completionKey === plan.key && terminal.completionApplied === terminal.currentInput;
+  terminal.completionKey = plan.key;
+  terminal.completionIndex = sameCycle ? (terminal.completionIndex + 1) % plan.matches.length : 0;
+  terminal.currentInput = plan.matches[terminal.completionIndex] ?? terminal.currentInput;
+  terminal.completionApplied = terminal.currentInput;
 }
 
-function applyCompletion(value: string): string {
-  const trimmed = value.trimStart();
-  const matches = completionMatches(value);
-  if (!matches.length) return value;
-  if (!trimmed) return matches[0];
-  const shared = longestCommonPrefix(matches);
-  if (shared.length > trimmed.length) return shared;
-  return matches[0];
+function completionPlan(value: string): CompletionPlan {
+  const input = value.trimStart();
+  if (!input) return { key: 'root', matches: orderCompletions([...new Set(COMMANDS.map((cmd) => cmd.split(/\s+/)[0]))]) };
+
+  const spaced = /\s$/.test(input);
+  const words = input.trimEnd().split(/\s+/);
+  const first = words[0]?.toLowerCase() ?? '';
+  const currentWord = spaced ? '' : words[words.length - 1] ?? '';
+  const prefix = spaced ? input : input.slice(0, input.length - currentWord.length);
+  const argStage = argumentStageMatches(input, words, currentWord, prefix, spaced);
+  if (argStage.matches.length) return argStage;
+
+  const commandStage = commandStageMatches(input, first, currentWord, prefix, spaced);
+  if (commandStage.matches.length) return commandStage;
+
+  return { key: `literal:${input}`, matches: orderCompletions(COMMANDS.filter((cmd) => cmd.toLowerCase().startsWith(input.toLowerCase()))) };
+}
+
+function commandStageMatches(input: string, first: string, currentWord: string, prefix: string, spaced: boolean): CompletionPlan {
+  const grouped = COMMANDS.filter((cmd) => cmd.toLowerCase().startsWith(`${first} `));
+  if (grouped.length && (!input.includes(' ') || COMMANDS.some((cmd) => cmd.toLowerCase() === input.toLowerCase()))) {
+    return { key: `cmd:${first}`, matches: orderCompletions(grouped) };
+  }
+  if (input.includes(' ')) {
+    const siblings = COMMANDS.filter((cmd) => {
+      if (!cmd.toLowerCase().startsWith(prefix.toLowerCase())) return false;
+      const tail = cmd.slice(prefix.length);
+      return spaced || tail.toLowerCase().startsWith(currentWord.toLowerCase()) || cmd.toLowerCase() === input.toLowerCase();
+    });
+    return { key: `cmd:${first}`, matches: orderCompletions(siblings.length ? siblings : grouped) };
+  }
+  return { key: `root:${first}`, matches: orderCompletions(COMMANDS.filter((cmd) => cmd.toLowerCase().startsWith(input.toLowerCase()))) };
+}
+
+function argumentStageMatches(input: string, words: string[], currentWord: string, prefix: string, spaced: boolean): CompletionPlan {
+  const command = words.slice(0, spaced ? words.length : -1).join(' ').toLowerCase();
+  const values = argumentValues(command);
+  if (!values.length) return { key: '', matches: [] };
+  const exact = !spaced && values.some((value) => value.toLowerCase() === currentWord.toLowerCase());
+  const matches = values
+    .filter((value) => spaced || exact || value.toLowerCase().startsWith(currentWord.toLowerCase()))
+    .map((value) => `${prefix}${value}`);
+  return { key: `arg:${command}`, matches };
+}
+
+function argumentValues(command: string): string[] {
+  if (command === 'lmx open' || command === 'lmx close' || command === 'perm app') return APP_IDS;
+  if (command === 'shell add' || command === 'shell remove' || command === 'shell set' || command === 'de install') return ['lmi-r-desktop-preview', 'fleetline-kiosk', 'dataforge-workbench'];
+  if (/^svc (status|start|stop|restart|logs)$/.test(command)) return SERVICE_IDS;
+  if (command === 'perm grant' || command === 'perm revoke') return CAPABILITY_IDS;
+  return [];
+}
+
+function orderCompletions(matches: string[]): string[] {
+  return [...matches].sort((a, b) => {
+    const preferredA = COMPLETION_ORDER.indexOf(a);
+    const preferredB = COMPLETION_ORDER.indexOf(b);
+    if (preferredA !== -1 || preferredB !== -1) return (preferredA === -1 ? 999 : preferredA) - (preferredB === -1 ? 999 : preferredB);
+    return a.localeCompare(b);
+  });
 }
 
 function longestCommonPrefix(values: string[]): string {
