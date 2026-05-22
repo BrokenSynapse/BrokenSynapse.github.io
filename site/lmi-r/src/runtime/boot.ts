@@ -328,13 +328,6 @@ function wireTerminal(
     }
   };
   prompt?.addEventListener('keydown', handleKey);
-  root.addEventListener('keydown', (event) => {
-    if (document.activeElement === prompt) return;
-    if (event.key === 'Tab' || event.key.length === 1) {
-      focusCommand();
-      handleKey(event);
-    }
-  });
 }
 
 async function runCommand(
@@ -595,8 +588,7 @@ function suggestCompletion(value: string): string {
   if (!trimmed) return '';
   const matches = completionMatches(value);
   if (matches.length === 1) return matches[0].slice(trimmed.length);
-  const shared = longestCommonPrefix(matches);
-  return shared.length > trimmed.length ? shared.slice(trimmed.length) : '';
+  return '';
 }
 
 function applyCompletion(value: string): string {
