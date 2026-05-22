@@ -251,11 +251,13 @@ pre {
   border: 0;
   outline: 0;
   background: transparent;
-  color: transparent;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent;
   caret-color: #d9fff5;
   padding: 0;
   box-shadow: none;
   appearance: none;
+  z-index: 2;
 }
 
 .terminal-command-wrap {
@@ -268,6 +270,8 @@ pre {
 }
 
 .terminal-command-mirror {
+  position: relative;
+  z-index: 1;
   display: inline-block;
   min-width: 1ch;
   white-space: pre;

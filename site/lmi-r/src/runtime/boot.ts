@@ -267,6 +267,23 @@ function wireTerminal(
   };
   syncInput();
   input?.focus();
+  const focusCommand = () => {
+    input?.focus({ preventScroll: true });
+    output?.scrollTo({ top: output.scrollHeight });
+  };
+  root.addEventListener('pointerdown', (event) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('button, a, input, textarea, select')) return;
+    event.preventDefault();
+    focusCommand();
+  });
+  output?.addEventListener('pointerdown', (event) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('#terminalCommand')) return;
+    event.preventDefault();
+    focusCommand();
+  });
+  form?.addEventListener('pointerdown', () => focusCommand());
 
   input?.addEventListener('input', () => {
     syncInput();
