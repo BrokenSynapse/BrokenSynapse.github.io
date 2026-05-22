@@ -220,7 +220,6 @@ function renderTerminal(parts: RuntimeParts, terminal: TerminalState, user: Logi
           <form id="terminalForm" class="terminal-input">
             <span>${escapeHtml(user.username)}@lmi-r:${escapeHtml(shortPwd(terminal.cwd, user))}$</span>
             <input id="terminalCommand" autocomplete="off" spellcheck="false" autofocus>
-            <small id="terminalSuggestion">${escapeHtml(terminal.suggestion)}</small>
           </form>
         </section>
     </main>
