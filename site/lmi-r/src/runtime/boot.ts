@@ -223,6 +223,7 @@ function renderTerminal(parts: RuntimeParts, terminal: TerminalState, user: Logi
             <div id="terminalPrompt" class="terminal-input" tabindex="0">
               <span class="terminal-prompt-label">${escapeHtml(user.username)}@lmi-r:${escapeHtml(shortPwd(terminal.cwd, user))}$</span>
               <span id="terminalCommandMirror" class="terminal-command-mirror">${terminal.currentInput ? highlightCommand(terminal.currentInput) : '&nbsp;'}</span>
+              <span id="terminalCompletionGhost" class="terminal-completion-ghost" aria-hidden="true"></span>
             </div>
           </div>
         </section>
@@ -259,9 +260,11 @@ function wireTerminal(
   output?.scrollTo({ top: output.scrollHeight });
   const prompt = root.querySelector<HTMLElement>('#terminalPrompt');
   const mirror = root.querySelector<HTMLElement>('#terminalCommandMirror');
+  const ghost = root.querySelector<HTMLElement>('#terminalCompletionGhost');
   const syncInput = () => {
     if (mirror) mirror.innerHTML = terminal.currentInput ? highlightCommand(terminal.currentInput) : '&nbsp;';
-    terminal.suggestion = complete(terminal.currentInput, false);
+    terminal.suggestion = suggestCompletion(terminal.currentInput);
+    if (ghost) ghost.textContent = terminal.suggestion;
   };
   syncInput();
   prompt?.focus({ preventScroll: true });
@@ -285,7 +288,7 @@ function wireTerminal(
     terminal.currentInput += event.clipboardData?.getData('text/plain') ?? '';
     syncInput();
   });
-  prompt?.addEventListener('keydown', (event) => {
+  const handleKey = (event: KeyboardEvent) => {
     if (event.key === 'ArrowUp') {
       event.preventDefault();
       terminal.historyIndex = Math.max(0, terminal.historyIndex - 1);
@@ -298,7 +301,7 @@ function wireTerminal(
       syncInput();
     } else if (event.key === 'Tab') {
       event.preventDefault();
-      const next = complete(terminal.currentInput, true);
+      const next = applyCompletion(terminal.currentInput);
       if (next) terminal.currentInput = next;
       syncInput();
     } else if (event.key === 'Backspace') {
@@ -322,6 +325,14 @@ function wireTerminal(
       event.preventDefault();
       terminal.currentInput += event.key;
       syncInput();
+    }
+  };
+  prompt?.addEventListener('keydown', handleKey);
+  root.addEventListener('keydown', (event) => {
+    if (document.activeElement === prompt) return;
+    if (event.key === 'Tab' || event.key.length === 1) {
+      focusCommand();
+      handleKey(event);
     }
   });
 }
@@ -573,12 +584,39 @@ function shortPwd(path: string, user: LoginUser): string {
   return path.startsWith(`${user.home_path}/`) ? `~/${path.slice(user.home_path.length + 1)}` : path;
 }
 
-function complete(value: string, apply: boolean): string {
+function completionMatches(value: string): string[] {
   const trimmed = value.trimStart();
-  if (!trimmed) return apply ? '' : COMMANDS.slice(0, 8).join('  ');
-  const matches = COMMANDS.filter((cmd) => cmd.toLowerCase().startsWith(trimmed.toLowerCase()));
-  if (apply) return matches.length === 1 ? matches[0] : value;
+  if (!trimmed) return COMMANDS.slice(0, 8);
+  return COMMANDS.filter((cmd) => cmd.toLowerCase().startsWith(trimmed.toLowerCase()));
+}
+
+function suggestCompletion(value: string): string {
+  const trimmed = value.trimStart();
+  const matches = completionMatches(value);
+  if (!trimmed) return matches.join('  ');
+  if (matches.length === 1) return matches[0].slice(trimmed.length);
   return matches.slice(0, 6).join('  ');
+}
+
+function applyCompletion(value: string): string {
+  const trimmed = value.trimStart();
+  const matches = completionMatches(value);
+  if (!matches.length) return value;
+  if (!trimmed) return matches[0];
+  const shared = longestCommonPrefix(matches);
+  if (shared.length > trimmed.length) return shared;
+  return matches[0];
+}
+
+function longestCommonPrefix(values: string[]): string {
+  if (!values.length) return '';
+  let prefix = values[0];
+  for (const value of values.slice(1)) {
+    while (!value.toLowerCase().startsWith(prefix.toLowerCase()) && prefix) {
+      prefix = prefix.slice(0, -1);
+    }
+  }
+  return prefix;
 }
 
 function highlightCommand(value: string): string {

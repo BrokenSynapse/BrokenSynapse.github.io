@@ -257,6 +257,12 @@ pre {
   pointer-events: none;
 }
 
+.terminal-completion-ghost {
+  color: rgba(217, 255, 245, 0.34);
+  white-space: pre;
+  pointer-events: none;
+}
+
 .terminal-input:focus .terminal-command-mirror::after {
   content: "";
   display: inline-block;
