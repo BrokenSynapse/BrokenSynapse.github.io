@@ -12,6 +12,12 @@
     redir /lmi-r /lmi-r/
 
     handle_path /lmi-r/* {
+        header {
+            Cache-Control "no-store, max-age=0, must-revalidate"
+            Pragma "no-cache"
+            Expires "0"
+            -ETag
+        }
         root * /srv/site/lmi-r/dist
         try_files {path} /index.html
         file_server
