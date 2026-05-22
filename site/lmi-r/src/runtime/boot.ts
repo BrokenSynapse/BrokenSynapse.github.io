@@ -221,7 +221,7 @@ function renderTerminal(parts: RuntimeParts, terminal: TerminalState, user: Logi
           <div id="terminalOutput" class="terminal-output">
             ${terminal.lines.map(renderLine).join('')}
             <div id="terminalPrompt" class="terminal-input" tabindex="0">
-              <span>${escapeHtml(user.username)}@lmi-r:${escapeHtml(shortPwd(terminal.cwd, user))}$</span>
+              <span class="terminal-prompt-label">${escapeHtml(user.username)}@lmi-r:${escapeHtml(shortPwd(terminal.cwd, user))}$</span>
               <span id="terminalCommandMirror" class="terminal-command-mirror">${terminal.currentInput ? highlightCommand(terminal.currentInput) : '&nbsp;'}</span>
             </div>
           </div>

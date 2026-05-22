@@ -241,7 +241,7 @@ pre {
   color: #ffe68a;
 }
 
-.terminal-input span {
+.terminal-prompt-label {
   color: #4df5cf;
   flex: 0 0 auto;
 }
