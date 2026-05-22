@@ -105,6 +105,12 @@ const APP_IDS = ['settings', 'sift', 'fleetline', 'dataforge'];
 const SERVICE_IDS = ['api-rust', 'api', 'caddy', 'bus', 'storage'];
 const CAPABILITY_IDS = ['state:read', 'state:write', 'entity:read', 'entity:write', 'asset:read', 'asset:write', 'debug:read'];
 const COMPLETION_ORDER = ['lx -h', 'help', 'Lfetch'];
+const SHELL_CATALOG = [
+  ['Crisp', 'MacOS styled environment'],
+  ['Xenon', 'Windows styled environment'],
+  ['LXCE', '3d layered experimental environment'],
+  ['Omicron', 'mobile oriented environment']
+] as const;
 
 export function createRuntime(parts: RuntimeParts) {
   const bus = new LmiBus(parts.api, parts.modules);
@@ -117,7 +123,7 @@ export function createRuntime(parts: RuntimeParts) {
     fleetlineAsset: null,
     siftNote: 'No asset selected.',
     fleetlineSubscribed: false,
-    deCatalog: ['lmi-r-desktop-preview', 'fleetline-kiosk', 'dataforge-workbench'],
+    deCatalog: SHELL_CATALOG.map(([id]) => id),
     cwd: '/lmi-r/os',
     fs: new Map(),
     history: [],
@@ -454,7 +460,8 @@ function lxCommand(args: string[], parts: RuntimeParts, terminal: TerminalState)
 }
 
 function shellCommand(args: string[], terminal: TerminalState): void {
-  if (args[0] === 'list' || args[0] === 'installed') pushBlock(terminal, terminal.deCatalog.map((id) => `${id}    available later`));
+  if (args[0] === 'list') pushBlock(terminal, SHELL_CATALOG.map(([id, description]) => `${id.padEnd(8)} ${description} (upcoming)`));
+  else if (args[0] === 'installed') pushLine(terminal, 'output', 'terminal');
   else if (['add', 'remove', 'set', 'install'].includes(args[0] || '')) pushLine(terminal, 'system', `${args.join(' ')} queued; terminal remains base shell.`);
   else if (args[0] === 'current') pushLine(terminal, 'output', 'terminal');
   else if (args[0] === 'reset') pushLine(terminal, 'system', 'default shell reset to terminal');
@@ -665,7 +672,7 @@ function argumentStageMatches(input: string, words: string[], currentWord: strin
 
 function argumentValues(command: string): string[] {
   if (command === 'lmx open' || command === 'lmx close' || command === 'perm app') return APP_IDS;
-  if (command === 'shell add' || command === 'shell remove' || command === 'shell set' || command === 'de install') return ['lmi-r-desktop-preview', 'fleetline-kiosk', 'dataforge-workbench'];
+  if (command === 'shell add' || command === 'shell remove' || command === 'shell set' || command === 'de install') return SHELL_CATALOG.map(([id]) => id);
   if (/^svc (status|start|stop|restart|logs)$/.test(command)) return SERVICE_IDS;
   if (command === 'perm grant' || command === 'perm revoke') return CAPABILITY_IDS;
   return [];
