@@ -245,17 +245,34 @@ pre {
 }
 
 .terminal-input input {
-  flex: 1 1 auto;
-  width: min(72ch, calc(100vw - 260px));
-  min-width: 12ch;
+  position: absolute;
+  inset: 0;
+  width: 100%;
   border: 0;
   outline: 0;
   background: transparent;
-  color: #d9fff5;
+  color: transparent;
   caret-color: #d9fff5;
   padding: 0;
   box-shadow: none;
   appearance: none;
+}
+
+.terminal-command-wrap {
+  position: relative;
+  display: inline-block;
+  width: min(72ch, calc(100vw - 260px));
+  min-width: 12ch;
+  min-height: 1.45em;
+  vertical-align: baseline;
+}
+
+.terminal-command-mirror {
+  display: inline-block;
+  min-width: 1ch;
+  white-space: pre;
+  color: #d9fff5;
+  pointer-events: none;
 }
 
 .fatal {

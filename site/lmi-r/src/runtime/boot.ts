@@ -220,7 +220,10 @@ function renderTerminal(parts: RuntimeParts, terminal: TerminalState, user: Logi
             ${terminal.lines.map(renderLine).join('')}
             <form id="terminalForm" class="terminal-input">
               <span>${escapeHtml(user.username)}@lmi-r:${escapeHtml(shortPwd(terminal.cwd, user))}$</span>
-              <input id="terminalCommand" autocomplete="off" spellcheck="false" autofocus>
+              <span class="terminal-command-wrap">
+                <span id="terminalCommandMirror" class="terminal-command-mirror" aria-hidden="true"></span>
+                <input id="terminalCommand" autocomplete="off" spellcheck="false" autofocus>
+              </span>
             </form>
           </div>
         </section>
@@ -257,29 +260,33 @@ function wireTerminal(
   output?.scrollTo({ top: output.scrollHeight });
   const form = root.querySelector<HTMLFormElement>('#terminalForm');
   const input = root.querySelector<HTMLInputElement>('#terminalCommand');
+  const mirror = root.querySelector<HTMLElement>('#terminalCommandMirror');
+  const syncInput = () => {
+    if (mirror && input) mirror.innerHTML = input.value ? highlightCommand(input.value) : '&nbsp;';
+    terminal.suggestion = input ? complete(input.value, false) : '';
+  };
+  syncInput();
   input?.focus();
 
   input?.addEventListener('input', () => {
-    terminal.suggestion = complete(input.value, false);
-    const hint = root.querySelector<HTMLElement>('#terminalSuggestion');
-    if (hint) hint.textContent = terminal.suggestion;
+    syncInput();
   });
   input?.addEventListener('keydown', (event) => {
     if (event.key === 'ArrowUp') {
       event.preventDefault();
       terminal.historyIndex = Math.max(0, terminal.historyIndex - 1);
       input.value = terminal.history[terminal.historyIndex] ?? input.value;
+      syncInput();
     } else if (event.key === 'ArrowDown') {
       event.preventDefault();
       terminal.historyIndex = Math.min(terminal.history.length, terminal.historyIndex + 1);
       input.value = terminal.history[terminal.historyIndex] ?? '';
+      syncInput();
     } else if (event.key === 'Tab') {
       event.preventDefault();
       const next = complete(input.value, true);
       if (next) input.value = next;
-      terminal.suggestion = complete(input.value, false);
-      const hint = root.querySelector<HTMLElement>('#terminalSuggestion');
-      if (hint) hint.textContent = terminal.suggestion;
+      syncInput();
     }
   });
 
