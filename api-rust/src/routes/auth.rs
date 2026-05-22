@@ -1,7 +1,7 @@
 use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sqlx::{sqlite::SqliteConnectOptions, Row, SqlitePool};
+use sqlx::{sqlite::SqliteConnectOptions, ConnectOptions, Row, SqlitePool};
 use std::str::FromStr;
 
 use crate::{core, routes::ApiError};
