@@ -70,7 +70,7 @@ async fn login_from_lmi_r(pool: &SqlitePool, username: &str, password: &str) -> 
     let row = sqlx::query(
         "SELECT es.payload FROM entity e JOIN entity_state es ON es.entity_id = e.id WHERE e.slug = ?1",
     )
-    .bind(slug)
+    .bind(&slug)
     .fetch_optional(pool)
     .await?;
 
