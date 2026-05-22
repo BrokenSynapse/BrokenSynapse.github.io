@@ -107,7 +107,7 @@ pre {
 
 .terminal-input {
   display: inline-flex;
-  gap: 8px;
+  gap: 0;
   align-items: center;
   min-height: 1.45em;
   margin: 0;
@@ -244,6 +244,7 @@ pre {
 .terminal-prompt-label {
   color: #4df5cf;
   flex: 0 0 auto;
+  margin-right: 8px;
 }
 
 .terminal-command-mirror {
@@ -258,7 +259,7 @@ pre {
 }
 
 .terminal-completion-ghost {
-  color: rgba(217, 255, 245, 0.34);
+  color: rgba(217, 255, 245, 0.22);
   white-space: pre;
   pointer-events: none;
 }
@@ -266,7 +267,7 @@ pre {
 .terminal-input:focus .terminal-command-mirror::after {
   content: "";
   display: inline-block;
-  width: 0.58ch;
+  width: 1px;
   height: 1.05em;
   margin-left: 1px;
   background: #d9fff5;

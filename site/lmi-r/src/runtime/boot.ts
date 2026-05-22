@@ -600,6 +600,7 @@ function shortPwd(path: string, user: LoginUser): string {
 type CompletionPlan = { key: string; matches: string[] };
 
 function suggestCompletion(terminal: TerminalState): string {
+  if (!terminal.currentInput.trimStart()) return '';
   const plan = completionPlan(terminal.currentInput);
   if (!plan.matches.length) return '';
   const index = terminal.completionKey === plan.key ? terminal.completionIndex % plan.matches.length : 0;
