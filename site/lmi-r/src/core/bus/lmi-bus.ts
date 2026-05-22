@@ -1,7 +1,7 @@
 import type { ApiClient } from '../../runtime/apiClient';
 import type { ModuleDefinition, ModuleRegistry } from '../../runtime/moduleRegistry';
 import { hasCapability, type LmiCapability } from './lmi-capabilities';
-import { jsonLmiCodec, type LmiCodec } from './lmi-codec';
+import { binaryLmiCodec, type LmiCodec } from './lmi-codec';
 import { LmiOp } from './lmi-opcodes';
 import { createPacket, type LmiPacket } from './lmi-packet';
 import { LmiRouter } from './lmi-router';
@@ -18,7 +18,7 @@ export class LmiBus {
   constructor(
     private readonly api: ApiClient,
     private readonly registry: ModuleRegistry,
-    private readonly codec: LmiCodec = jsonLmiCodec
+    private readonly codec: LmiCodec = binaryLmiCodec
   ) {
     for (const module of registry.list()) {
       this.registerModule(module);

@@ -21,6 +21,7 @@ async fn main() -> anyhow::Result<()> {
     let legacy_database_path = env::var("LMI_R_LEGACY_DB").unwrap_or_else(|_| "../data/brokensynapse.sqlite".to_string());
     let db = db::connect(&database_path).await?;
     db::migrate(&db).await?;
+    storage::migrate_legacy_json_blobs(&db).await?;
 
     let state = core::AppState {
         db,

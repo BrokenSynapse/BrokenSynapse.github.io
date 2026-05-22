@@ -7,8 +7,8 @@ use std::str::FromStr;
 use crate::{core, routes::ApiError};
 
 const ENTITY_KIND_USER_AUTH: i64 = 20;
-const SCHEMA_USER_AUTH_JSON: i64 = 2;
-const CODEC_JSON: i64 = 1;
+const SCHEMA_USER_AUTH_BINARY: i64 = 2;
+const CODEC_MSGPACK: i64 = 2;
 
 #[derive(Deserialize)]
 pub struct LoginRequest {
@@ -78,7 +78,26 @@ async fn login_from_lmi_r(pool: &SqlitePool, username: &str, password: &str) -> 
         return Ok(None);
     };
     let bytes: Vec<u8> = row.get("payload");
-    let payload: Value = serde_json::from_slice(&bytes)?;
+    let payload: Value = match rmp_serde::from_slice(&bytes) {
+        Ok(value) => value,
+        Err(_) => {
+            // One-time compatibility bridge for early LMI-R JSON credential blobs.
+            let value: Value = serde_json::from_slice(&bytes)?;
+            let binary = rmp_serde::to_vec_named(&value)?;
+            sqlx::query(
+                "UPDATE entity_state SET schema_id = ?1, codec = ?2, payload = ?3 WHERE entity_id = (
+                    SELECT id FROM entity WHERE slug = ?4
+                )",
+            )
+            .bind(SCHEMA_USER_AUTH_BINARY)
+            .bind(CODEC_MSGPACK)
+            .bind(binary)
+            .bind(&slug)
+            .execute(pool)
+            .await?;
+            value
+        }
+    };
     let stored_hash = payload.get("password_hash").and_then(Value::as_str).unwrap_or("");
     if stored_hash != password {
         anyhow::bail!("Invalid LMI-R username or password.");
@@ -130,7 +149,7 @@ async fn persist_credential(pool: &SqlitePool, legacy: &LegacyCredential) -> any
     let slug = auth_slug(&legacy.username);
     let now = core::unix_ms();
     let home_path = home_path(&legacy.username, legacy.is_admin);
-    let payload = serde_json::to_vec(&json!({
+    let payload = rmp_serde::to_vec_named(&json!({
         "username": legacy.username,
         "password_hash": legacy.password_hash,
         "cid": legacy.cid,
@@ -170,8 +189,8 @@ async fn persist_credential(pool: &SqlitePool, legacy: &LegacyCredential) -> any
          ON CONFLICT(entity_id) DO UPDATE SET schema_id = excluded.schema_id, codec = excluded.codec, payload = excluded.payload",
     )
     .bind(entity_id)
-    .bind(SCHEMA_USER_AUTH_JSON)
-    .bind(CODEC_JSON)
+    .bind(SCHEMA_USER_AUTH_BINARY)
+    .bind(CODEC_MSGPACK)
     .bind(payload)
     .execute(&mut *tx)
     .await?;

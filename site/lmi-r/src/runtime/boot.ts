@@ -5,6 +5,7 @@ import type { StateStore } from './stateStore';
 import type { Theme } from './themeLoader';
 import type { WindowManager } from './windowManager';
 import { LmiBus } from '../core/bus/lmi-bus';
+import { decodeMsgpack, encodeMsgpack } from '../core/bus/lmi-codec';
 import type { BusDebugView, LmiAssetRef } from '../core/bus/lmi-types';
 import { createModuleContext, type ModuleContext } from '../sdk/module-context';
 
@@ -159,7 +160,7 @@ function wireLogin(root: HTMLElement, parts: RuntimeParts, onLogin: (user: Login
     event.preventDefault();
     if (status) status.textContent = 'Authenticating...';
     void parts.api.login(user?.value ?? '', pass?.value ?? '').then(async (profile) => {
-      sessionStorage.setItem('lmi-r:user', JSON.stringify(profile));
+      sessionStorage.setItem('lmi-r:user', encodeSessionValue(profile));
       await onLogin(profile);
     }).catch((error) => {
       if (status) status.textContent = String(error);
@@ -203,7 +204,7 @@ function renderActiveApp(terminal: TerminalState): string {
   if (terminal.activeApp === 'settings') return `<p>settings.demo.message</p><code>${escapeHtml(terminal.settingsValue)}</code>`;
   if (terminal.activeApp === 'sift') return `<p>${escapeHtml(terminal.siftNote)}</p><code>Try: asset demo</code>`;
   if (terminal.activeApp === 'fleetline') return `<p>Last selected asset</p><code>${terminal.fleetlineAsset ? escapeHtml(`${terminal.fleetlineAsset.id} ${terminal.fleetlineAsset.mime ?? ''}`) : 'none'}</code>`;
-  if (terminal.activeApp === 'dataforge') return `<p>Bus debug</p><pre>${escapeHtml(JSON.stringify(terminal.dataForgeDebug ?? { hint: 'run: bus' }, null, 2))}</pre>`;
+  if (terminal.activeApp === 'dataforge') return `<p>Bus debug</p><pre>${escapeHtml(formatDebugValue(terminal.dataForgeDebug ?? { hint: 'run: bus' }))}</pre>`;
   return `<p>Terminal mode. Standalone desktop environments can be installed later without becoming the default shell.</p>`;
 }
 
@@ -511,7 +512,43 @@ function commandTokenClass(token: string, index: number, full: string): string {
 }
 
 function loadSessionUser(): LoginUser | null {
-  try { return JSON.parse(sessionStorage.getItem('lmi-r:user') || 'null') as LoginUser | null; } catch { return null; }
+  try {
+    const value = sessionStorage.getItem('lmi-r:user');
+    return value ? (decodeMsgpack(base64ToBytes(value)) as LoginUser) : null;
+  } catch {
+    sessionStorage.removeItem('lmi-r:user');
+    return null;
+  }
+}
+
+function encodeSessionValue(value: unknown): string {
+  return bytesToBase64(encodeMsgpack(value));
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+  return btoa(binary);
+}
+
+function base64ToBytes(value: string): Uint8Array {
+  const binary = atob(value);
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+
+function formatDebugValue(value: unknown, indent = 0): string {
+  const pad = ' '.repeat(indent);
+  if (value === null || value === undefined) return String(value);
+  if (Array.isArray(value)) {
+    if (!value.length) return '[]';
+    return value.map((item, index) => `${pad}${index}: ${formatDebugValue(item, indent + 2).trimStart()}`).join('\n');
+  }
+  if (typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (!entries.length) return '{}';
+    return entries.map(([key, item]) => `${pad}${key}: ${typeof item === 'object' && item !== null ? '\n' + formatDebugValue(item, indent + 2) : formatDebugValue(item, 0)}`).join('\n');
+  }
+  return String(value);
 }
 
 function userStateKey(user: LoginUser, key: string): string {

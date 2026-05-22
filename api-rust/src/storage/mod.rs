@@ -43,3 +43,25 @@ pub async fn list_entities_debug(pool: &SqlitePool) -> anyhow::Result<EntityList
             .collect(),
     })
 }
+
+pub async fn migrate_legacy_json_blobs(pool: &SqlitePool) -> anyhow::Result<()> {
+    let rows: Vec<(i64, Vec<u8>)> = sqlx::query_as(
+        "SELECT entity_id, payload FROM entity_state WHERE codec = 1",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    for (entity_id, payload) in rows {
+        let Ok(value) = serde_json::from_slice::<serde_json::Value>(&payload) else {
+            continue;
+        };
+        let binary = rmp_serde::to_vec_named(&value)?;
+        sqlx::query("UPDATE entity_state SET codec = 2, payload = ?1 WHERE entity_id = ?2")
+            .bind(binary)
+            .bind(entity_id)
+            .execute(pool)
+            .await?;
+    }
+
+    event_log::migrate_legacy_json_events(pool).await
+}

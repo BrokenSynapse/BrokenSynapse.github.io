@@ -1,4 +1,5 @@
 import type { LmiPacket } from '../core/bus/lmi-packet';
+import { decodeMsgpack, encodeMsgpack } from '../core/bus/lmi-codec';
 
 export interface StatusResponse {
   ok: boolean;
@@ -53,13 +54,27 @@ export function createApiClient(baseUrl: string): ApiClient {
     return body as T;
   }
 
+  async function postBinary<T>(path: string, payload: unknown): Promise<T> {
+    const response = await fetch(`${baseUrl}${path}`, {
+      method: 'POST',
+      headers: { Accept: 'application/x-msgpack', 'Content-Type': 'application/x-msgpack' },
+      body: encodeMsgpack(payload) as BodyInit,
+      cache: 'no-store'
+    });
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (!response.ok) {
+      throw new Error(`Binary API request failed: ${response.status}`);
+    }
+    return decodeMsgpack(bytes) as T;
+  }
+
   return {
     status: () => getJson<StatusResponse>('/status'),
     login: async (username, password) => {
       const response = await postJson<{ ok: boolean; user: LoginUser }>('/auth/login', { username, password });
       return response.user;
     },
-    packet: (packet) => postJson<LmiPacket>('/packet', packet),
-    packetBatch: (packets) => postJson<LmiPacket[]>('/packet/batch', packets)
+    packet: (packet) => postBinary<LmiPacket>('/packet', packet),
+    packetBatch: (packets) => postBinary<LmiPacket[]>('/packet/batch', packets)
   };
 }

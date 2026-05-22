@@ -10,6 +10,7 @@ This branch starts a side-by-side rewrite of the LMI stack. The production `/lmi
 - `api-rust/migrations/0001_compact_object_schema.sql`: the first compact SQLite object schema.
 - Caddy route `/api-r/*` proxying to the Rust service.
 - Docker Compose service `api-rust` running separately from the existing Node API.
+- Binary LMI Bus packet transport using MessagePack (`application/x-msgpack`) for runtime data and persisted state/event blobs.
 
 ## What Still Uses The Old System
 
@@ -44,6 +45,8 @@ Startup opens or creates `data/lmi-r.sqlite`, enables SQLite WAL-oriented pragma
 Available endpoints:
 
 - `GET /api-r/status`
+- `POST /api-r/packet`
+- `POST /api-r/packet/batch`
 - `GET /api-r/debug/schema`
 - `GET /api-r/debug/entities`
 
@@ -88,11 +91,13 @@ Command group labels:
 - `perm`: permissions
 - `Lfetch`: identity/neofetch
 
-The Rust backend remains generic: it accepts packets, logs packets to `event_log`, and persists compact state in `entity` plus `entity_state`.
+The Rust backend remains generic: it accepts binary packets, logs packets to `event_log`, and persists compact state in `entity` plus `entity_state`.
 
 ## Compact Database Direction
 
-The new schema uses integer IDs and compact dictionaries instead of repeating strings in every row. Entity state payloads are stored as BLOBs with a codec marker, while debug endpoints expose JSON views during development. MessagePack or CBOR codecs are reserved but not required for this first slice.
+The new schema uses integer IDs and compact dictionaries instead of repeating strings in every row. Entity state payloads are stored as BLOBs with a codec marker. LMI-R runtime packets, persisted state, and event log payloads now use MessagePack BLOBs; JSON is only kept for the legacy account import/login doorway and development status/debug views.
+
+Early LMI-R test builds briefly wrote JSON state/auth/event payloads. Rust now runs a one-time startup migration for entity/event blobs marked with the old JSON codec, and the auth/state readers also have a defensive read-and-rewrite fallback. After that rewrite, LMI-R runtime storage is MessagePack.
 
 Core tables:
 
@@ -110,5 +115,5 @@ Core tables:
 2. Define stable TypeScript DTOs for the first native module.
 3. Add authenticated write paths to the Rust API.
 4. Move one low-risk module into `/lmi-r` as a native TypeScript implementation.
-5. Add binary packet support once the JSON debug shape stops changing.
-6. Add compatibility launchers for old modules only when needed, keeping them visually marked as legacy.
+5. Add compatibility launchers for old modules only when needed, keeping them visually marked as legacy.
+6. Add optional CBOR or custom packed structs after the MessagePack packet shape settles.
