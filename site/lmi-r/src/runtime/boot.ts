@@ -592,10 +592,11 @@ function completionMatches(value: string): string[] {
 
 function suggestCompletion(value: string): string {
   const trimmed = value.trimStart();
+  if (!trimmed) return '';
   const matches = completionMatches(value);
-  if (!trimmed) return matches.join('  ');
   if (matches.length === 1) return matches[0].slice(trimmed.length);
-  return matches.slice(0, 6).join('  ');
+  const shared = longestCommonPrefix(matches);
+  return shared.length > trimmed.length ? shared.slice(trimmed.length) : '';
 }
 
 function applyCompletion(value: string): string {

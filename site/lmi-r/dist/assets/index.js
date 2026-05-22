@@ -114,7 +114,7 @@ function resolve(cwd,input){const raw=input.startsWith("/")?input:`${cwd}/${inpu
 function clamp(path){if(user.is_admin)return path.startsWith("/lmi-r/os")?path:"/lmi-r/os";return path===user.home_path||path.startsWith(`${user.home_path}/`)?path:user.home_path}
 function shortPwd(path){if(path===user.home_path)return"~";return path.startsWith(`${user.home_path}/`)?`~/${path.slice(user.home_path.length+1)}`:path}
 function completionMatches(v){const t=v.trimStart();if(!t)return COMMANDS.slice(0,8);return COMMANDS.filter(c=>c.toLowerCase().startsWith(t.toLowerCase()))}
-function suggestCompletion(v){const t=v.trimStart(),m=completionMatches(v);if(!t)return m.join("  ");if(m.length===1)return m[0].slice(t.length);return m.slice(0,6).join("  ")}
+function suggestCompletion(v){const t=v.trimStart();if(!t)return"";const m=completionMatches(v);if(m.length===1)return m[0].slice(t.length);const shared=longestCommonPrefix(m);return shared.length>t.length?shared.slice(t.length):""}
 function applyCompletion(v){const t=v.trimStart(),m=completionMatches(v);if(!m.length)return v;if(!t)return m[0];const shared=longestCommonPrefix(m);if(shared.length>t.length)return shared;return m[0]}
 function longestCommonPrefix(values){if(!values.length)return"";let p=values[0];for(const v of values.slice(1))for(;!v.toLowerCase().startsWith(p.toLowerCase())&&p;)p=p.slice(0,-1);return p}
 function highlight(v){let i=0;return v.split(/(\s+)/).map(tok=>{if(/^\s+$/.test(tok))return tok;const cls=tokClass(tok,i++,v);return cls?`<span class="${cls}">${esc(tok)}</span>`:esc(tok)}).join("")}
