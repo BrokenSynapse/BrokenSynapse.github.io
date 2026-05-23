@@ -39,6 +39,7 @@ type TerminalState = {
   completionIndex: number;
   completionApplied: string;
   currentInput: string;
+  pendingDoas: { args: string[] } | null;
 };
 
 const BANNER = ['LMI Ver. 19.2.1.1.2212', '\u00a9 Leviathan Exports Company.', ''];
@@ -132,7 +133,8 @@ export function createRuntime(parts: RuntimeParts) {
     completionKey: '',
     completionIndex: 0,
     completionApplied: '',
-    currentInput: ''
+    currentInput: '',
+    pendingDoas: null
   };
   let currentStatus: StatusResponse | null = null;
   let currentStatusText = 'Checking Rust backend...';
@@ -279,8 +281,11 @@ function wireTerminal(
   const mirror = root.querySelector<HTMLElement>('#terminalCommandMirror');
   const ghost = root.querySelector<HTMLElement>('#terminalCompletionGhost');
   const syncInput = () => {
-    if (mirror) mirror.innerHTML = terminal.currentInput ? highlightCommand(terminal.currentInput) : '&nbsp;';
-    terminal.suggestion = suggestCompletion(terminal);
+    if (mirror) {
+      const displayValue = terminal.pendingDoas ? '*'.repeat(terminal.currentInput.length) : terminal.currentInput;
+      mirror.innerHTML = displayValue ? highlightCommand(displayValue) : '&nbsp;';
+    }
+    terminal.suggestion = terminal.pendingDoas ? '' : suggestCompletion(terminal);
     if (ghost) ghost.textContent = terminal.suggestion;
   };
   const resetCompletion = () => {
@@ -366,6 +371,13 @@ async function runCommand(
   statusText: string,
   logout: () => void
 ): Promise<void> {
+  if (terminal.pendingDoas) {
+    const pending = terminal.pendingDoas;
+    terminal.pendingDoas = null;
+    await completeDoas(command, pending.args, parts, terminal, user);
+    return;
+  }
+
   pushLine(terminal, 'input', command);
   const [raw, ...args] = command.split(/\s+/);
   const op = raw;
@@ -374,20 +386,7 @@ async function runCommand(
   if (lower === 'help') {
     const filter = args.join(' ').trim();
     if (filter === 'lx') { pushBlock(terminal, lxHelpLines()); return; }
-    const commands = filter ? COMMANDS.filter((item) => item.startsWith(filter)) : COMMANDS;
-    pushBlock(terminal, [
-      'Command groups:',
-      '  lx        package/profile binding manager',
-      '  lmx       app/module launcher',
-      '  shell     DE/shell manager',
-      '  sys       runtime/system manager',
-      '  svc       services',
-      '  perm      permissions',
-      '  Lfetch    identity/neofetch',
-      '',
-      'Commands:',
-      ...commands.map((item) => `  ${item}`)
-    ]);
+    pushBlock(terminal, helpLines(filter));
     return;
   }
   if (lower === 'clear') { terminal.lines = []; return; }
@@ -422,8 +421,13 @@ async function runCommand(
   if (lower === 'kill') { pushLine(terminal, 'system', `kill requested for ${args[0] || 'active package'}`); return; }
   if (lower === 'vb') { pushLine(terminal, 'error', 'vb requires doas administrator elevation'); return; }
   if (lower === 'doas') {
-    if (args[0] === 'vb') { runVerboseCommand(args.slice(1), parts, terminal, user); return; }
-    pushLine(terminal, user.is_admin ? 'system' : 'error', user.is_admin ? 'admin capability active' : 'doas refused: admin tag required');
+    if (user.username !== 'BrokenSynapse') { pushLine(terminal, 'error', 'doas refused: BrokenSynapse admin account required'); return; }
+    if (args[0] === 'vb') {
+      terminal.pendingDoas = { args };
+      pushLine(terminal, 'system', '[doas authenticate]: [Enter password for current account]');
+      return;
+    }
+    pushLine(terminal, 'system', 'doas ready; provide an elevated command such as: doas vb lx -y');
     return;
   }
   pushLine(terminal, 'error', `Command not found: ${command}`);
@@ -433,6 +437,34 @@ function openApp(parts: RuntimeParts, terminal: TerminalState, appId: string): v
   if (!parts.modules.get(appId)) { pushLine(terminal, 'error', `Unknown app: ${appId || '(missing)'}`); return; }
   terminal.activeApp = appId;
   pushLine(terminal, 'system', `Opened ${appId} through terminal adapter.`);
+}
+
+function helpLines(filter: string): string[] {
+  const groups = [
+    ['lx', 'package/profile binding manager'],
+    ['lmx', 'app/module launcher'],
+    ['shell', 'DE/shell manager'],
+    ['sys', 'runtime/system manager'],
+    ['svc', 'services'],
+    ['perm', 'permissions'],
+    ['Lfetch', 'identity/neofetch']
+  ];
+  const commands = filter ? COMMANDS.filter((item) => item.toLowerCase().startsWith(filter.toLowerCase())) : COMMANDS;
+  return [
+    'Command groups:',
+    ...groups.map(([name, description]) => `  ${name.padEnd(8)} ${description}`),
+    '',
+    'Commands:',
+    ...formatColumns(commands.map((item) => `  ${item}`), 3, 24)
+  ];
+}
+
+function formatColumns(items: string[], columns: number, width: number): string[] {
+  const rows: string[] = [];
+  for (let index = 0; index < items.length; index += columns) {
+    rows.push(items.slice(index, index + columns).map((item) => item.padEnd(width)).join('').trimEnd());
+  }
+  return rows;
 }
 
 async function saveSetting(messageRaw: string, contexts: Map<string, ModuleContext>, terminal: TerminalState, user: LoginUser): Promise<void> {
@@ -490,11 +522,25 @@ function lxHelpLines(): string[] {
   ];
 }
 
+async function completeDoas(password: string, args: string[], parts: RuntimeParts, terminal: TerminalState, user: LoginUser): Promise<void> {
+  if (user.username !== 'BrokenSynapse') { pushLine(terminal, 'error', 'doas refused: BrokenSynapse admin account required'); return; }
+  try {
+    const authenticated = await parts.api.login(user.username, password);
+    if (authenticated.username !== 'BrokenSynapse' || !authenticated.is_admin) {
+      pushLine(terminal, 'error', 'doas refused: admin authentication failed');
+      return;
+    }
+  } catch {
+    pushLine(terminal, 'error', 'doas refused: admin authentication failed');
+    return;
+  }
+  if (args[0] === 'vb') runVerboseCommand(args.slice(1), parts, terminal, user);
+  else pushLine(terminal, 'error', `doas refused: unsupported elevated command ${args.join(' ') || '(empty)'}`);
+}
+
 function runVerboseCommand(args: string[], parts: RuntimeParts, terminal: TerminalState, user: LoginUser): void {
-  if (!user.is_admin) { pushLine(terminal, 'error', 'doas refused: admin tag required'); return; }
   const command = args.join(' ').trim();
   if (!command) { pushLine(terminal, 'error', 'vb requires a command'); return; }
-  pushLine(terminal, 'system', '[doas authenticate]: [Enter password for current account]');
   pushLine(terminal, 'output', `>${command}`);
   pushBlock(terminal, [
     '>[verbose data]',
