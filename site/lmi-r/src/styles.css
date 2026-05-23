@@ -258,8 +258,8 @@ pre {
   pointer-events: none;
 }
 
-.terminal-completion-ghost {
-  color: rgba(217, 255, 245, 0.22);
+.terminal-input .terminal-completion-ghost {
+  color: rgba(217, 255, 245, 0.12);
   white-space: pre;
   pointer-events: none;
 }

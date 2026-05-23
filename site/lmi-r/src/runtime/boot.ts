@@ -98,7 +98,7 @@ const COMMANDS = [
   'svc list', 'svc status', 'svc start', 'svc stop', 'svc restart', 'svc logs',
   'perm list', 'perm app', 'perm grant', 'perm revoke',
   'debug packets', 'debug modules', 'debug state', 'debug profile', 'debug registry', 'debug clear-cache', 'debug reload',
-  'kill', 'doas', 'neofetch', 'apps', 'status', 'save', 'asset demo', 'bus', 'de list', 'de install'
+  'kill', 'doas', 'vb', 'neofetch', 'apps', 'status', 'save', 'asset demo', 'bus', 'de list', 'de install'
 ];
 
 const APP_IDS = ['settings', 'sift', 'fleetline', 'dataforge'];
@@ -373,6 +373,7 @@ async function runCommand(
 
   if (lower === 'help') {
     const filter = args.join(' ').trim();
+    if (filter === 'lx') { pushBlock(terminal, lxHelpLines()); return; }
     const commands = filter ? COMMANDS.filter((item) => item.startsWith(filter)) : COMMANDS;
     pushBlock(terminal, [
       'Command groups:',
@@ -419,7 +420,12 @@ async function runCommand(
   if (lower === 'asset' && args[0] === 'demo') { publishAsset(contexts, terminal); return; }
   if (lower === 'bus') { await busDebug(contexts, terminal); return; }
   if (lower === 'kill') { pushLine(terminal, 'system', `kill requested for ${args[0] || 'active package'}`); return; }
-  if (lower === 'doas') { pushLine(terminal, user.is_admin ? 'system' : 'error', user.is_admin ? 'admin capability active' : 'doas refused: admin tag required'); return; }
+  if (lower === 'vb') { pushLine(terminal, 'error', 'vb requires doas administrator elevation'); return; }
+  if (lower === 'doas') {
+    if (args[0] === 'vb') { runVerboseCommand(args.slice(1), parts, terminal, user); return; }
+    pushLine(terminal, user.is_admin ? 'system' : 'error', user.is_admin ? 'admin capability active' : 'doas refused: admin tag required');
+    return;
+  }
   pushLine(terminal, 'error', `Command not found: ${command}`);
 }
 
@@ -455,8 +461,51 @@ async function busDebug(contexts: Map<string, ModuleContext>, terminal: Terminal
 function lxCommand(args: string[], parts: RuntimeParts, terminal: TerminalState): void {
   const flag = args[0] || '-h';
   if (flag === '-v' || flag === '-l') pushBlock(terminal, parts.modules.list().map((module) => `${module.id} ${module.name}`));
-  else if (flag === '-h') pushBlock(terminal, COMMANDS.filter((cmd) => cmd.startsWith('lx ')));
+  else if (flag === '-h') pushBlock(terminal, lxHelpLines());
   else pushLine(terminal, 'system', `lx ${args.join(' ')} accepted by package manager shim.`);
+}
+
+function lxHelpLines(): string[] {
+  return [
+    'lx -b [package]  - banish package',
+    '                  uninstall / remove user access / unpin from DE if present',
+    '',
+    'lx -c [package]  - clear package cache',
+    '',
+    'lx -g [package]  - gather package',
+    '                  install / allow user access / pin to DE if present',
+    '',
+    'lx -h            - show lx help menu',
+    '',
+    'lx -i [package]  - inspect package details',
+    '',
+    'lx -l            - list installed packages',
+    '',
+    'lx -u            - update modules and main interface',
+    '',
+    'lx -v            - view available packages',
+    '',
+    'lx -y            - gather from yonder',
+    '                  refresh package registry'
+  ];
+}
+
+function runVerboseCommand(args: string[], parts: RuntimeParts, terminal: TerminalState, user: LoginUser): void {
+  if (!user.is_admin) { pushLine(terminal, 'error', 'doas refused: admin tag required'); return; }
+  const command = args.join(' ').trim();
+  if (!command) { pushLine(terminal, 'error', 'vb requires a command'); return; }
+  pushLine(terminal, 'system', '[doas authenticate]: [Enter password for current account]');
+  pushLine(terminal, 'output', `>${command}`);
+  pushBlock(terminal, [
+    '>[verbose data]',
+    `>actor=${user.username}`,
+    '>scope=administrator',
+    '>transport=LMI Bus',
+    '>backend=/api-r packet layer'
+  ]);
+  const [raw, ...innerArgs] = command.split(/\s+/);
+  if (raw.toLowerCase() === 'lx') lxCommand(innerArgs, parts, terminal);
+  else pushLine(terminal, 'system', `${command}: verbose command wrapper completed`);
 }
 
 function shellCommand(args: string[], terminal: TerminalState): void {
@@ -487,11 +536,12 @@ function debugCommand(args: string[], terminal: TerminalState, parts: RuntimePar
 
 function buildLfetch(parts: RuntimeParts, terminal: TerminalState, user: LoginUser, status: StatusResponse | null, statusText: string): string {
   const started = status?.started_at ? Date.now() - status.started_at : performance.now();
+  const memory = browserMemoryLine();
   const details = [
     `<span class="lfetch-user">${escapeHtml(user.username)}@brokensynapse-us</span>`,
     `<span class="lfetch-rule">--------------------------</span>`,
-    field('OS', 'LMI Ver. 19.2.1.1.2212'),
-    field('Host', `[${escapeHtml(user.cid || 'acc_name')}] [${hashAccount(user.username)}]`),
+    field('OS', 'LMI 19.2.1.1.2212'),
+    field('Host', `${escapeHtml(user.cid || 'acc_name')}-${hashAccount(user.username)}`),
     field('Kernel', 'Linux 19.2.1-22-generic'),
     field('Uptime', formatDuration(started)),
     field('Packages', `${parts.modules.list().length} (lmx)`),
@@ -499,15 +549,25 @@ function buildLfetch(parts: RuntimeParts, terminal: TerminalState, user: LoginUs
     field('Terminal', '/dev/pts/0'),
     field('CPU', 'LXC Trinity 2200 (96) @ 9800 MHz'),
     field('GPU', 'JI Cashout 3301'),
-    field('Memory', 'cache / 3072 GiB (cache/GiB%)'),
+    field('Memory', `${memory.usedGiB} GiB / 3072 GiB (${memory.percent}%)`),
     field('Disk (/)', '36.82 GiB / 245.02 GiB (<span class="lfetch-green">15%</span>) - xfs'),
     field('Local IP (enp0s3)', 'reported by browser/network layer'),
-    field('Locale', `${navigator.language || 'browser'} [${Intl.DateTimeFormat().resolvedOptions().timeZone || 'local'}]`),
+    field('Locale', 'en_US.UTF-8'),
     '',
     '<span class="lfetch-swatches"><i style="--c:#4a4a4a"></i><i style="--c:#e84242"></i><i style="--c:#12b826"></i><i style="--c:#d4b80f"></i><i style="--c:#174fe0"></i><i style="--c:#8e1fb2"></i><i style="--c:#38a2d7"></i><i style="--c:#d8d8d8"></i></span>',
     '<span class="lfetch-swatches"><i style="--c:#777"></i><i style="--c:#ff5d5d"></i><i style="--c:#24d43a"></i><i style="--c:#fff38a"></i><i style="--c:#6285ff"></i><i style="--c:#cd18bf"></i><i style="--c:#79dde0"></i><i style="--c:#fff"></i></span>'
   ];
   return `<div class="lfetch-grid"><pre>${escapeHtml(LFETCH_ART)}</pre><pre>${details.join('\n')}</pre></div>`;
+}
+
+function browserMemoryLine(): { usedGiB: string; percent: string } {
+  const memory = (performance as Performance & { memory?: { usedJSHeapSize?: number } }).memory;
+  const usedBytes = memory?.usedJSHeapSize ?? 0;
+  const usedGiB = usedBytes / 1024 / 1024 / 1024;
+  return {
+    usedGiB: usedGiB.toFixed(3),
+    percent: ((usedGiB / 3072) * 100).toFixed(6)
+  };
 }
 
 function field(label: string, value: string): string {
