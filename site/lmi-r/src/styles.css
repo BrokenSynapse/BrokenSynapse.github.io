@@ -97,6 +97,10 @@ pre {
   color: #ffe68a;
 }
 
+.tok-doas {
+  color: #ff5d7d;
+}
+
 .tok-path {
   color: #c78cff;
 }

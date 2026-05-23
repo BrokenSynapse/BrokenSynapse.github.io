@@ -817,10 +817,17 @@ function highlightCommand(value: string): string {
 }
 
 function commandTokenClass(token: string, index: number, full: string): string {
-  if (index === 0) return 'tok-cmd';
+  const words = full.trimStart().split(/\s+/);
+  const root = words[0] || '';
+  if (index === 0) return token === 'doas' ? 'tok-doas' : 'tok-cmd';
+  if (root === 'doas') {
+    if (index === 1 && token === 'vb') return 'tok-doas';
+    if (index === 2) return 'tok-cmd';
+    if (index > 2 && token.startsWith('-')) return 'tok-flag';
+  }
   if (token.startsWith('-')) return 'tok-flag';
   if (token.startsWith('/') || token.startsWith('~/') || token === '..' || token === '.') return 'tok-path';
-  if (index === 1 && /^(lx|shell|lmx|sys|svc|perm|debug|de)$/.test(full.split(/\s+/)[0] || '')) return 'tok-subcmd';
+  if (index === 1 && /^(lx|shell|lmx|sys|svc|perm|debug|de)$/.test(root)) return 'tok-subcmd';
   if (/^[a-z0-9._-]+\.lmx$/i.test(token) || /^(settings|sift|fleetline|dataforge)$/i.test(token)) return 'tok-app';
   return '';
 }
