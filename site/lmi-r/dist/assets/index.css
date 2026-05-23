@@ -56,6 +56,7 @@ pre {
   line-height: 1.45;
   white-space: pre-wrap;
   scrollbar-width: none;
+  container-type: inline-size;
 }
 
 .terminal-output::-webkit-scrollbar,
@@ -136,23 +137,26 @@ pre {
 
 .lfetch-grid {
   display: grid;
-  grid-template-columns: max-content minmax(260px, 1fr);
-  gap: 32px;
+  grid-template-columns: minmax(0, min(42cqw, 520px)) minmax(240px, 1fr);
+  gap: 24px;
   align-items: start;
-  overflow-x: auto;
+  max-width: 100%;
+  overflow: hidden;
   scrollbar-width: none;
 }
 
 .lfetch-grid pre {
+  min-width: 0;
   margin: 0;
   color: #d9fff5;
   line-height: 1.04;
   white-space: pre;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .lfetch-grid pre:first-child {
-  font-size: 8px;
+  font-size: clamp(1.8px, 0.25cqw, 4px);
+  line-height: 1;
   color: #f8f6ff;
   background: linear-gradient(180deg, #ffffff 0%, #e9e4ff 32%, #bdb3d8 58%, #7f5cff 76%, #3b128a 100%);
   background-clip: text;
@@ -161,6 +165,13 @@ pre {
     0 0 2px rgba(255, 255, 255, 0.88),
     0 0 6px rgba(134, 64, 255, 0.72),
     0 0 14px rgba(91, 28, 213, 0.58);
+}
+
+.lfetch-grid pre:last-child {
+  font-size: clamp(11px, 1.2cqw, 15px);
+  line-height: 1.18;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .lfetch-user,
@@ -373,10 +384,8 @@ pre {
 }
 
 .de-terminal-app .lfetch-grid {
-  grid-template-columns: minmax(0, 46%) minmax(220px, 1fr);
-  gap: 18px;
-  max-width: 100%;
-  overflow: hidden;
+  grid-template-columns: minmax(0, min(40cqw, 420px)) minmax(220px, 1fr);
+  gap: 16px;
 }
 
 .de-terminal-app .lfetch-grid pre {
@@ -384,8 +393,7 @@ pre {
 }
 
 .de-terminal-app .lfetch-grid pre:first-child {
-  font-size: clamp(3.25px, 0.58vw, 5px);
-  line-height: 1;
+  font-size: clamp(1.7px, 0.24cqw, 3.4px);
 }
 
 .de-terminal-app .lfetch-grid pre:last-child {
