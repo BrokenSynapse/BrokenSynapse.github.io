@@ -471,7 +471,7 @@ async function runCommand(
   if (terminal.pendingDoas) {
     const pending = terminal.pendingDoas;
     terminal.pendingDoas = null;
-    await completeDoas(command, pending.args, parts, terminal, user);
+    await completeDoas(command, pending.args, parts, contexts, terminal, user);
     return;
   }
 
@@ -584,10 +584,10 @@ function publishAsset(contexts: Map<string, ModuleContext>, terminal: TerminalSt
   pushLine(terminal, 'system', `Sift published asset:selected -> ${asset.id}`);
 }
 
-async function busDebug(contexts: Map<string, ModuleContext>, terminal: TerminalState): Promise<void> {
+async function busDebug(contexts: Map<string, ModuleContext>, terminal: TerminalState, verbose = false): Promise<void> {
   terminal.dataForgeDebug = await contexts.get('dataforge')?.callAction('debug.bus') as BusDebugView;
-  terminal.activeApp = 'dataforge';
   pushBlock(terminal, [`registered modules: ${terminal.dataForgeDebug.registeredModules.length}`, `known topics: ${terminal.dataForgeDebug.knownTopics.join(', ') || 'none'}`, `recent packets: ${terminal.dataForgeDebug.recentPackets.length}`, `pending requests: ${terminal.dataForgeDebug.pendingRequestCount}`]);
+  if (verbose) pushVerbosePackets(terminal, terminal.dataForgeDebug);
 }
 
 function lxCommand(args: string[], parts: RuntimeParts, terminal: TerminalState): void {
@@ -622,7 +622,7 @@ function lxHelpLines(): string[] {
   ];
 }
 
-async function completeDoas(password: string, args: string[], parts: RuntimeParts, terminal: TerminalState, user: LoginUser): Promise<void> {
+async function completeDoas(password: string, args: string[], parts: RuntimeParts, contexts: Map<string, ModuleContext>, terminal: TerminalState, user: LoginUser): Promise<void> {
   if (user.username !== 'BrokenSynapse') { pushLine(terminal, 'error', 'doas refused: BrokenSynapse admin account required'); return; }
   try {
     const authenticated = await parts.api.login(user.username, password);
@@ -634,24 +634,34 @@ async function completeDoas(password: string, args: string[], parts: RuntimePart
     pushLine(terminal, 'error', 'doas refused: admin authentication failed');
     return;
   }
-  if (args[0] === 'vb') runVerboseCommand(args.slice(1), parts, terminal, user);
+  if (args[0] === 'vb') await runVerboseCommand(args.slice(1), parts, terminal, user, contexts);
   else pushLine(terminal, 'error', `doas refused: unsupported elevated command ${args.join(' ') || '(empty)'}`);
 }
 
-function runVerboseCommand(args: string[], parts: RuntimeParts, terminal: TerminalState, user: LoginUser): void {
+async function runVerboseCommand(args: string[], parts: RuntimeParts, terminal: TerminalState, user: LoginUser, contexts: Map<string, ModuleContext>): Promise<void> {
   const command = args.join(' ').trim();
   if (!command) { pushLine(terminal, 'error', 'vb requires a command'); return; }
   pushLine(terminal, 'output', `>${command}`);
-  pushBlock(terminal, [
-    '>[verbose data]',
-    `>actor=${user.username}`,
-    '>scope=administrator',
-    '>transport=LMI Bus',
-    '>backend=/api-r packet layer'
-  ]);
+  pushBlock(terminal, ['>[verbose data]', `>actor=${user.username}`, '>scope=administrator']);
   const [raw, ...innerArgs] = command.split(/\s+/);
-  if (raw.toLowerCase() === 'lx') lxCommand(innerArgs, parts, terminal);
+  if (raw.toLowerCase() === 'bus') {
+    await busDebug(contexts, terminal, true);
+  }
+  else if (raw.toLowerCase() === 'lx') {
+    lxCommand(innerArgs, parts, terminal);
+    pushVerbosePackets(terminal, terminal.dataForgeDebug);
+  }
   else pushLine(terminal, 'system', `${command}: verbose command wrapper completed`);
+}
+
+function pushVerbosePackets(terminal: TerminalState, debug: BusDebugView | null): void {
+  const packets = debug?.recentPackets.slice(-6) ?? [];
+  pushLine(terminal, 'output', `>packet-count=${packets.length}`);
+  for (const packet of packets) {
+    const target = packet.target ? `${packet.target.kind}:${packet.target.id}` : 'broadcast';
+    pushLine(terminal, 'output', `>packet id=${packet.id.slice(0, 8)} op=${packet.op} ${packet.source.kind}:${packet.source.id}->${target} scope=${packet.scope}`);
+    if (packet.payload !== undefined) pushLine(terminal, 'output', `>payload ${formatDebugValue(packet.payload).replace(/\n/g, ' ')}`);
+  }
 }
 
 function shellCommand(args: string[], terminal: TerminalState): void {

@@ -28,30 +28,16 @@ export interface ApiClient {
 }
 
 export function createApiClient(baseUrl: string): ApiClient {
-  async function getJson<T>(path: string): Promise<T> {
+  async function getBinary<T>(path: string): Promise<T> {
     const response = await fetch(`${baseUrl}${path}`, {
-      headers: { Accept: 'application/json' },
+      headers: { Accept: 'application/x-msgpack' },
       cache: 'no-store'
     });
-    const body = await response.json().catch(() => ({}));
+    const bytes = new Uint8Array(await response.arrayBuffer());
     if (!response.ok) {
-      throw new Error(body.error || `API request failed: ${response.status}`);
+      throw new Error(`Binary API request failed: ${response.status}`);
     }
-    return body as T;
-  }
-
-  async function postJson<T>(path: string, payload: unknown): Promise<T> {
-    const response = await fetch(`${baseUrl}${path}`, {
-      method: 'POST',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      cache: 'no-store'
-    });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(body.error || `API request failed: ${response.status}`);
-    }
-    return body as T;
+    return decodeMsgpack(bytes) as T;
   }
 
   async function postBinary<T>(path: string, payload: unknown): Promise<T> {
@@ -69,9 +55,9 @@ export function createApiClient(baseUrl: string): ApiClient {
   }
 
   return {
-    status: () => getJson<StatusResponse>('/status'),
+    status: () => getBinary<StatusResponse>('/status.bin'),
     login: async (username, password) => {
-      const response = await postJson<{ ok: boolean; user: LoginUser }>('/auth/login', { username, password });
+      const response = await postBinary<{ ok: boolean; user: LoginUser }>('/auth/login.bin', { username, password });
       return response.user;
     },
     packet: (packet) => postBinary<LmiPacket>('/packet', packet),

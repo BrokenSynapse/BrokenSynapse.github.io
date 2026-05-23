@@ -1,10 +1,10 @@
-use axum::{extract::State, Json};
+use axum::{body::Bytes, extract::State, response::IntoResponse, Json};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::{sqlite::SqliteConnectOptions, ConnectOptions, Row, SqlitePool};
 use std::str::FromStr;
 
-use crate::{core, routes::ApiError};
+use crate::{core, routes::{packet::binary_response, ApiError}};
 
 const ENTITY_KIND_USER_AUTH: i64 = 20;
 const SCHEMA_USER_AUTH_BINARY: i64 = 2;
@@ -45,13 +45,26 @@ pub async fn login(
     State(state): State<core::AppState>,
     Json(req): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, ApiError> {
+    Ok(Json(login_inner(&state, req).await?))
+}
+
+pub async fn login_binary(
+    State(state): State<core::AppState>,
+    body: Bytes,
+) -> Result<impl IntoResponse, ApiError> {
+    let req: LoginRequest = rmp_serde::from_slice(&body).map_err(anyhow::Error::new)?;
+    let response = login_inner(&state, req).await?;
+    Ok(binary_response(rmp_serde::to_vec_named(&response).map_err(anyhow::Error::new)?))
+}
+
+async fn login_inner(state: &core::AppState, req: LoginRequest) -> anyhow::Result<LoginResponse> {
     let username = req.username.trim();
     let password = req.password.trim();
     if username.is_empty() {
-        return Err(anyhow::anyhow!("username is required").into());
+        anyhow::bail!("username is required");
     }
     if password.is_empty() {
-        return Err(anyhow::anyhow!("password is required").into());
+        anyhow::bail!("password is required");
     }
 
     let user = if let Some(user) = login_from_lmi_r(&state.db, username, password).await? {
@@ -62,7 +75,7 @@ pub async fn login(
         login_user_from_legacy(&legacy)
     };
 
-    Ok(Json(LoginResponse { ok: true, user }))
+    Ok(LoginResponse { ok: true, user })
 }
 
 async fn login_from_lmi_r(pool: &SqlitePool, username: &str, password: &str) -> anyhow::Result<Option<LoginUser>> {

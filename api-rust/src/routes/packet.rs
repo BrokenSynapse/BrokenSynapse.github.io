@@ -154,7 +154,7 @@ fn encode_packet(packet: &LmiPacket) -> anyhow::Result<Vec<u8>> {
     rmp_serde::to_vec_named(packet).map_err(Into::into)
 }
 
-fn binary_response(body: Vec<u8>) -> (HeaderMap, Vec<u8>) {
+pub fn binary_response(body: Vec<u8>) -> (HeaderMap, Vec<u8>) {
     let mut headers = HeaderMap::new();
     headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/x-msgpack"));
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
