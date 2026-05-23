@@ -24,6 +24,8 @@ type FsEntry = { type: 'file' | 'dir'; content?: string; created: number };
 type TerminalState = {
   lines: TerminalLine[];
   activeApp: string;
+  activeShell: string;
+  desktopRunning: boolean;
   settingsValue: string;
   dataForgeDebug: BusDebugView | null;
   fleetlineAsset: LmiAssetRef | null;
@@ -119,6 +121,8 @@ export function createRuntime(parts: RuntimeParts) {
   const terminal: TerminalState = {
     lines: [...BANNER.map((text) => ({ kind: 'system' as const, text })), { kind: 'system', text: 'Type "help" or press Tab for command completion.' }],
     activeApp: 'terminal',
+    activeShell: 'terminal',
+    desktopRunning: false,
     settingsValue: 'loading',
     dataForgeDebug: null,
     fleetlineAsset: null,
@@ -154,7 +158,9 @@ export function createRuntime(parts: RuntimeParts) {
 
     seedUserFs(terminal, currentUser, parts);
     const rerender = () => {
-      root.innerHTML = renderTerminal(parts, terminal, currentUser as LoginUser, currentStatus, currentStatusText);
+      root.innerHTML = terminal.desktopRunning
+        ? renderDesktop(parts, terminal, currentUser as LoginUser, currentStatus, currentStatusText)
+        : renderTerminal(parts, terminal, currentUser as LoginUser, currentStatus, currentStatusText);
       wireTerminal(root, parts, contexts, terminal, currentUser as LoginUser, currentStatus, currentStatusText, rerender, () => {
         currentUser = null;
         sessionStorage.removeItem('lmi-r:user');
@@ -250,6 +256,32 @@ function renderTerminal(parts: RuntimeParts, terminal: TerminalState, user: Logi
   `;
 }
 
+function renderDesktop(parts: RuntimeParts, terminal: TerminalState, user: LoginUser, status: StatusResponse | null, statusText: string): string {
+  const shell = terminal.activeShell;
+  const modules = parts.modules.list();
+  const appCards = modules.map((module) => `
+    <button class="de-app" data-app="${escapeHtml(module.id)}">
+      <span>${escapeHtml(module.name.replace('.LMX', ''))}</span>
+      <small>${escapeHtml(module.phase)}</small>
+    </button>
+  `).join('');
+  const active = renderDesktopApp(terminal);
+  if (shell === 'Omicron') {
+    return `<main class="de de-omicron"><section class="de-phone"><header><b>LMI-R</b><span>${escapeHtml(user.username)}</span></header><div class="de-drawer">${appCards}</div><article>${active}</article><footer>Omicron</footer></section></main>`;
+  }
+  if (shell === 'Crisp') {
+    return `<main class="de de-crisp"><header class="de-menu">LMI-R <span>${escapeHtml(status?.service ?? statusText)}</span></header><section class="de-stage"><div class="de-window"><div class="mac-lights"><i></i><i></i><i></i></div>${active}</div><aside class="de-dock">${appCards}</aside></section></main>`;
+  }
+  if (shell === 'Xenon') {
+    return `<main class="de de-xenon"><section class="xenon-desktop">${appCards}<div class="xenon-window"><div class="xenon-title">LMI-R - ${escapeHtml(terminal.activeApp)}</div>${active}</div></section><footer class="xenon-taskbar"><b>Start</b><span>${escapeHtml(user.username)}</span></footer></main>`;
+  }
+  return `<main class="de de-lxce"><section class="lxce-fold"><div class="fold-panel fold-left">${appCards}</div><div class="fold-panel fold-center">${active}</div><div class="fold-panel fold-right"><h2>LXCE Layer</h2><p>Modules share one bus and flex into view.</p></div></section></main>`;
+}
+
+function renderDesktopApp(terminal: TerminalState): string {
+  return `<div class="de-active"><h1>${escapeHtml(terminal.activeApp)}</h1>${renderActiveApp(terminal)}</div>`;
+}
+
 function renderLine(line: TerminalLine): string {
   if (line.kind === 'lfetch') return `<div class="term-line lfetch">${line.text}</div>`;
   const text = line.kind === 'input' ? highlightCommand(line.text) : escapeHtml(line.text);
@@ -308,6 +340,15 @@ function wireTerminal(
   output?.addEventListener('pointerdown', (event) => {
     event.preventDefault();
     focusCommand();
+  });
+  root.querySelectorAll<HTMLElement>('[data-app]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const appId = button.dataset.app;
+      if (appId) {
+        terminal.activeApp = appId;
+        rerender();
+      }
+    });
   });
 
   prompt?.addEventListener('paste', (event) => {
@@ -411,7 +452,9 @@ async function runCommand(
   if (lower === 'sys') { sysCommand(args, terminal); return; }
   if (lower === 'lx') { lxCommand(args, parts, terminal); return; }
   if (lower === 'shell' || lower === 'de') { shellCommand(args, terminal); return; }
-  if (lower === 'startx' || lower === 'stopx' || lower === 'tty') { pushLine(terminal, 'system', `${lower}: terminal remains the base interface for now.`); return; }
+  if (lower === 'startx') { terminal.desktopRunning = terminal.activeShell !== 'terminal'; pushLine(terminal, terminal.desktopRunning ? 'system' : 'error', terminal.desktopRunning ? `${terminal.activeShell} started` : 'No desktop shell selected. Use shell set Crisp|Xenon|LXCE|Omicron.'); return; }
+  if (lower === 'stopx') { terminal.desktopRunning = false; pushLine(terminal, 'system', 'desktop stopped; terminal restored'); return; }
+  if (lower === 'tty') { pushLine(terminal, 'output', terminal.desktopRunning ? `${terminal.activeShell} on tty7` : 'terminal on tty1'); return; }
   if (lower === 'svc') { pushLine(terminal, 'system', `svc ${args.join(' ') || 'list'}: service control is read-only in this slice.`); return; }
   if (lower === 'perm') { pushLine(terminal, 'system', `perm ${args.join(' ') || 'list'}: capability editor reserved for admin slice.`); return; }
   if (lower === 'debug') { debugCommand(args, terminal, parts); return; }
@@ -555,12 +598,24 @@ function runVerboseCommand(args: string[], parts: RuntimeParts, terminal: Termin
 }
 
 function shellCommand(args: string[], terminal: TerminalState): void {
-  if (args[0] === 'list') pushBlock(terminal, SHELL_CATALOG.map(([id, description]) => `${id.padEnd(8)} ${description} (upcoming)`));
-  else if (args[0] === 'installed') pushLine(terminal, 'output', 'terminal');
-  else if (['add', 'remove', 'set', 'install'].includes(args[0] || '')) pushLine(terminal, 'system', `${args.join(' ')} queued; terminal remains base shell.`);
-  else if (args[0] === 'current') pushLine(terminal, 'output', 'terminal');
-  else if (args[0] === 'reset') pushLine(terminal, 'system', 'default shell reset to terminal');
+  const requested = matchShell(args.slice(1).join(' ') || args[1] || '');
+  if (args[0] === 'list') pushBlock(terminal, SHELL_CATALOG.map(([id, description]) => `${id.padEnd(8)} ${description}`));
+  else if (args[0] === 'installed') pushBlock(terminal, ['terminal', ...SHELL_CATALOG.map(([id]) => id)]);
+  else if (['add', 'install', 'set'].includes(args[0] || '')) {
+    if (!requested) { pushLine(terminal, 'error', 'Unknown shell. Use shell list.'); return; }
+    terminal.activeShell = requested;
+    pushLine(terminal, 'system', `${requested} selected. Run startx to enter it.`);
+  }
+  else if (args[0] === 'remove') pushLine(terminal, 'error', 'Core LMI-R shells cannot be removed in this build.');
+  else if (args[0] === 'current') pushLine(terminal, 'output', terminal.desktopRunning ? `${terminal.activeShell} (running)` : terminal.activeShell);
+  else if (args[0] === 'reset') { terminal.activeShell = 'terminal'; terminal.desktopRunning = false; pushLine(terminal, 'system', 'default shell reset to terminal'); }
   else pushBlock(terminal, COMMANDS.filter((cmd) => cmd.startsWith('shell ') || cmd.startsWith('de ')));
+}
+
+function matchShell(value: string): string | null {
+  const clean = value.trim().toLowerCase();
+  const hit = SHELL_CATALOG.find(([id]) => id.toLowerCase() === clean);
+  return hit?.[0] ?? null;
 }
 
 function sysCommand(args: string[], terminal: TerminalState): void {
