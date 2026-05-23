@@ -26,6 +26,8 @@ type TerminalState = {
   activeApp: string;
   activeShell: string;
   desktopRunning: boolean;
+  windowMinimized: boolean;
+  windowMaximized: boolean;
   settingsValue: string;
   dataForgeDebug: BusDebugView | null;
   fleetlineAsset: LmiAssetRef | null;
@@ -123,6 +125,8 @@ export function createRuntime(parts: RuntimeParts) {
     activeApp: 'terminal',
     activeShell: 'terminal',
     desktopRunning: false,
+    windowMinimized: false,
+    windowMaximized: false,
     settingsValue: 'loading',
     dataForgeDebug: null,
     fleetlineAsset: null,
@@ -258,28 +262,60 @@ function renderTerminal(parts: RuntimeParts, terminal: TerminalState, user: Logi
 
 function renderDesktop(parts: RuntimeParts, terminal: TerminalState, user: LoginUser, status: StatusResponse | null, statusText: string): string {
   const shell = terminal.activeShell;
-  const modules = parts.modules.list();
-  const appCards = modules.map((module) => `
-    <button class="de-app" data-app="${escapeHtml(module.id)}">
-      <span>${escapeHtml(module.name.replace('.LMX', ''))}</span>
-      <small>${escapeHtml(module.phase)}</small>
+  const apps = desktopApps(parts);
+  const appCards = apps.map((app) => `
+    <button class="de-app" data-app="${escapeHtml(app.id)}">
+      <span>${escapeHtml(app.label)}</span>
+      <small>${escapeHtml(app.meta)}</small>
     </button>
   `).join('');
-  const active = renderDesktopApp(terminal);
+  const active = renderDesktopWindow(terminal, shell, user);
   if (shell === 'Omicron') {
-    return `<main class="de de-omicron"><section class="de-phone"><header><b>LMI-R</b><span>${escapeHtml(user.username)}</span></header><div class="de-drawer">${appCards}</div><article>${active}</article><footer>Omicron</footer></section></main>`;
+    return `<main class="de de-omicron"><section class="de-phone"><header><b>LMI-R</b><span>${escapeHtml(user.username)}</span></header><div class="de-drawer">${appCards}</div><article>${renderDesktopApp(terminal, user)}</article><nav class="mobile-taskbar"><button data-mobile-action="back">Back</button><button data-mobile-action="home">Home</button><button data-mobile-action="apps">Apps</button></nav></section></main>`;
   }
   if (shell === 'Crisp') {
-    return `<main class="de de-crisp"><header class="de-menu">LMI-R <span>${escapeHtml(status?.service ?? statusText)}</span></header><section class="de-stage"><div class="de-window"><div class="mac-lights"><i></i><i></i><i></i></div>${active}</div><aside class="de-dock">${appCards}</aside></section></main>`;
+    return `<main class="de de-crisp"><header class="de-menu">LMI-R <span>${escapeHtml(status?.service ?? statusText)}</span></header><section class="de-stage">${active}<aside class="de-dock">${appCards}</aside></section></main>`;
   }
   if (shell === 'Xenon') {
-    return `<main class="de de-xenon"><section class="xenon-desktop">${appCards}<div class="xenon-window"><div class="xenon-title">LMI-R - ${escapeHtml(terminal.activeApp)}</div>${active}</div></section><footer class="xenon-taskbar"><b>Start</b><span>${escapeHtml(user.username)}</span></footer></main>`;
+    return `<main class="de de-xenon"><section class="xenon-desktop"><aside class="xenon-icons">${appCards}</aside>${active}</section><footer class="xenon-taskbar"><b>Start</b><span>${escapeHtml(user.username)}</span></footer></main>`;
   }
   return `<main class="de de-lxce"><section class="lxce-fold"><div class="fold-panel fold-left">${appCards}</div><div class="fold-panel fold-center">${active}</div><div class="fold-panel fold-right"><h2>LXCE Layer</h2><p>Modules share one bus and flex into view.</p></div></section></main>`;
 }
 
-function renderDesktopApp(terminal: TerminalState): string {
-  return `<div class="de-active"><h1>${escapeHtml(terminal.activeApp)}</h1>${renderActiveApp(terminal)}</div>`;
+function desktopApps(parts: RuntimeParts): Array<{ id: string; label: string; meta: string }> {
+  return [
+    { id: 'terminal', label: 'Terminal', meta: 'system' },
+    ...parts.modules.list().map((module) => ({
+      id: module.id,
+      label: module.name.replace('.LMX', ''),
+      meta: module.phase,
+    })),
+  ];
+}
+
+function renderDesktopWindow(terminal: TerminalState, shell: string, user: LoginUser): string {
+  if (terminal.windowMinimized) {
+    return `<button class="de-minimized" data-window-action="restore">${escapeHtml(terminal.activeApp)} minimized</button>`;
+  }
+  const classes = ['de-window', terminal.windowMaximized ? 'is-maximized' : '', `window-${shell.toLowerCase()}`].filter(Boolean).join(' ');
+  const controls = shell === 'Crisp'
+    ? `<div class="mac-lights"><button data-window-action="close"></button><button data-window-action="minimize"></button><button data-window-action="maximize"></button></div>`
+    : `<div class="window-controls"><button data-window-action="minimize">_</button><button data-window-action="maximize">[]</button><button data-window-action="close">x</button></div>`;
+  return `<div class="${classes}"><div class="de-titlebar">${controls}<span>${escapeHtml(appTitle(terminal.activeApp))}</span></div>${renderDesktopApp(terminal, user)}</div>`;
+}
+
+function renderDesktopApp(terminal: TerminalState, user: LoginUser | null): string {
+  if (terminal.activeApp === 'terminal') {
+    return `<div class="de-active de-terminal-app"><div id="terminalOutput" class="terminal-output">${terminal.lines.map(renderLine).join('')}<div id="terminalPrompt" class="terminal-input" tabindex="0"><span class="terminal-prompt-label">${escapeHtml(user?.username ?? 'LMI')}@lmi-r:${escapeHtml(shortPwd(terminal.cwd))}$</span><span id="terminalCommandMirror" class="terminal-command-mirror">${terminal.currentInput ? highlightCommand(terminal.currentInput) : '&nbsp;'}</span><span id="terminalCompletionGhost" class="terminal-completion-ghost" aria-hidden="true"></span></div></div></div>`;
+  }
+  return `<div class="de-active"><h1>${escapeHtml(appTitle(terminal.activeApp))}</h1>${renderActiveApp(terminal)}</div>`;
+}
+
+function appTitle(appId: string): string {
+  if (appId === 'terminal') return 'Terminal';
+  if (appId === 'fleetline') return 'Fleetline';
+  if (appId === 'dataforge') return 'DataForge';
+  return appId.charAt(0).toUpperCase() + appId.slice(1);
 }
 
 function renderLine(line: TerminalLine): string {
@@ -346,8 +382,28 @@ function wireTerminal(
       const appId = button.dataset.app;
       if (appId) {
         terminal.activeApp = appId;
+        terminal.windowMinimized = false;
         rerender();
       }
+    });
+  });
+  root.querySelectorAll<HTMLElement>('[data-window-action]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const action = button.dataset.windowAction;
+      if (action === 'close') terminal.activeApp = 'terminal';
+      if (action === 'minimize') terminal.windowMinimized = true;
+      if (action === 'restore') terminal.windowMinimized = false;
+      if (action === 'maximize') terminal.windowMaximized = !terminal.windowMaximized;
+      rerender();
+    });
+  });
+  root.querySelectorAll<HTMLElement>('[data-mobile-action]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const action = button.dataset.mobileAction;
+      if (action === 'back') terminal.activeApp = 'terminal';
+      if (action === 'home') terminal.activeApp = 'terminal';
+      if (action === 'apps') terminal.activeApp = 'terminal';
+      rerender();
     });
   });
 
@@ -434,7 +490,7 @@ async function runCommand(
   if (lower === 'exit') { logout(); return; }
   if (lower === 'reboot') { location.reload(); return; }
   if (lower === 'lfetch' || lower === 'neofetch') { pushLfetch(terminal, buildLfetch(parts, terminal, user, status, statusText)); return; }
-  if (lower === 'apps') { pushBlock(terminal, parts.modules.list().map((module) => `${module.id.padEnd(10)} ${module.name} [${module.phase}]`)); return; }
+  if (lower === 'apps') { pushBlock(terminal, desktopApps(parts).map((app) => `${app.id.padEnd(10)} ${app.label} [${app.meta}]`)); return; }
   if (lower === 'whoami') { pushBlock(terminal, [`username: ${user.username}`, `cid: ${user.cid || 'none'}`, `admin: ${user.is_admin ? 'yes' : 'no'}`, `home: ${user.home_path}`]); return; }
   if (lower === 'uptime') { pushLine(terminal, 'output', 'session active in browser runtime'); return; }
   if (lower === 'date') { const now = new Date(); pushLine(terminal, 'output', now.toString().replace(String(now.getFullYear()), String(now.getFullYear() + 186))); return; }
@@ -477,8 +533,9 @@ async function runCommand(
 }
 
 function openApp(parts: RuntimeParts, terminal: TerminalState, appId: string): void {
-  if (!parts.modules.get(appId)) { pushLine(terminal, 'error', `Unknown app: ${appId || '(missing)'}`); return; }
+  if (appId !== 'terminal' && !parts.modules.get(appId)) { pushLine(terminal, 'error', `Unknown app: ${appId || '(missing)'}`); return; }
   terminal.activeApp = appId;
+  terminal.windowMinimized = false;
   pushLine(terminal, 'system', `Opened ${appId} through terminal adapter.`);
 }
 
