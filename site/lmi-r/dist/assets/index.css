@@ -360,11 +360,44 @@ pre {
   background: #000403;
   color: var(--cyan);
   font-family: var(--mono);
+  container-type: inline-size;
 }
 
 .de-terminal-app .terminal-output {
   height: 100%;
   padding: 12px;
+}
+
+.de-terminal-app .lfetch {
+  margin: 8px 0 10px;
+}
+
+.de-terminal-app .lfetch-grid {
+  grid-template-columns: minmax(0, 46%) minmax(220px, 1fr);
+  gap: 18px;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.de-terminal-app .lfetch-grid pre {
+  min-width: 0;
+}
+
+.de-terminal-app .lfetch-grid pre:first-child {
+  font-size: clamp(3.25px, 0.58vw, 5px);
+  line-height: 1;
+}
+
+.de-terminal-app .lfetch-grid pre:last-child {
+  font-size: clamp(10px, 1.35vw, 14px);
+  line-height: 1.12;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.de-terminal-app .lfetch-swatches i {
+  width: 22px;
+  height: 14px;
 }
 
 .de-omicron {
@@ -627,5 +660,29 @@ pre {
 @media (max-width: 880px) {
   .lfetch-grid {
     grid-template-columns: 1fr;
+  }
+
+  .de-terminal-app .lfetch-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .de-terminal-app .lfetch-grid pre:first-child {
+    font-size: clamp(2.75px, 1.02vw, 4.5px);
+  }
+}
+
+@container (max-width: 620px) {
+  .de-terminal-app .lfetch-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .de-terminal-app .lfetch-grid pre:first-child {
+    font-size: clamp(2.5px, 1.2cqw, 4px);
+  }
+
+  .de-terminal-app .lfetch-grid pre:last-child {
+    font-size: 11px;
   }
 }
