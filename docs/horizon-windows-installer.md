@@ -33,13 +33,27 @@ progress. It does not estimate time spent inside a separate WebView2 installer.
 
 Set the same new three-part release version in Cargo.toml and tauri.conf.json,
 build the installer, and publish a stable public GitHub release in
-BrokenSynapse/BrokenSynapse.github.io. For version 0.6.1, use:
+BrokenSynapse/BrokenSynapse.github.io. For example, for version 0.6.3 use:
 
-- Release tag `horizon-v0.6.1`
-- Uploaded asset `Horizon-Chat-0.6.1-Windows-x64-Setup.exe`
+- Release tag `horizon-v0.6.3`
+- Windows setup `Horizon-Chat-0.6.3-Windows-x64-Setup.exe`
+- In-app update asset `Horizon-Chat-0.6.3-Windows-x64-Update.exe.gz`
 
 The Windows client checks on launch and every six hours while open. It ignores
 drafts, prereleases, releases without the matching uploaded installer, and
-versions at or below the installed version. The title-bar button opens the
-matching GitHub release in the default browser so the user can review and run
-setup. The title-bar Chrome is bundled through the native window initializer.
+versions at or below the installed version. From 0.6.2, clicking Update downloads
+and checks the expected size and SHA-256 from the official GitHub release. The
+in-app progress panel shows downloading and unpacking. A background Horizon
+process replaces the installed executable and restarts it without opening Setup.
+
+Generate the update asset by gzip-compressing the single Windows executable
+extracted from the release installer, with the exact versioned name above.
+Keep the full Setup asset for first-time installs and older desktop versions.
+
+The existing 0.6.0 and 0.6.1 builds need one standard install to pick up this
+updater. It checks for later releases that include the update asset.
+
+For a local update rehearsal, build with `cargo tauri build --no-bundle
+--features qa-fixture -- --locked` and run
+`node desktop/tests/windows-in-app-update.mjs PATH_TO_QA_EXE` from the repository
+root. The test uses an isolated installation and WebView profile.

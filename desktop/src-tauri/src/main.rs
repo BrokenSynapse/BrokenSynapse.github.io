@@ -9,8 +9,12 @@ use tauri::{
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
+#[cfg(windows)]
+mod desktop_update;
 mod media_cache;
 mod transport;
+#[cfg(windows)]
+mod update_handoff;
 #[cfg(windows)]
 mod windows_chrome;
 
@@ -43,12 +47,16 @@ fn open_in_browser(url: &Url) {
 }
 
 fn main() {
+    #[cfg(windows)]
+    if update_handoff::run_if_requested() {
+        return;
+    }
     let builder = tauri::Builder::default();
     #[cfg(windows)]
     let builder = builder.invoke_handler(tauri::generate_handler![
         windows_chrome::desktop_window_action,
-        windows_chrome::desktop_update_version,
-        windows_chrome::desktop_open_update,
+        desktop_update::desktop_update_version,
+        desktop_update::desktop_install_update,
     ]);
     builder
         .plugin(tauri_plugin_autostart::init(
@@ -106,6 +114,15 @@ fn main() {
                     "'});",
                     include_str!("windows-chrome.js"),
                 ));
+            #[cfg(windows)]
+            let window = if std::env::args().any(|arg| arg == "--horizon-update-failed") {
+                window.initialization_script("addEventListener('DOMContentLoaded', () => alert('Horizon reopened after the update could not be applied. You can retry the update.'), {once:true});")
+            } else { window };
+            let window = if let Some(icon) = app.default_window_icon() {
+                window.icon(icon.clone())?
+            } else {
+                window
+            };
             let window = window
                 .initialization_script(platform_script)
                 .title(title)
