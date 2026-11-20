@@ -1,0 +1,948 @@
+<!doctype html>
+<html lang="en" data-theme="horizon" data-css-theme data-theme-category="horizon">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Horizon Chat · BrokenSynapse</title>
+  <link rel="icon" type="image/png" href="singularity-logo.png?v=2">
+  <link rel="stylesheet" href="messenger.css?v=appearance-collections">
+  <link rel="stylesheet" href="composer.css?v=media-preferences">
+  <link rel="stylesheet" href="highlight.css">
+  <link rel="stylesheet" href="palette-themes.css?v=subtle-chat-selection">
+  <link rel="stylesheet" href="character-binder.css?v=2">
+  <script defer src="highlight.min.js"></script>
+  <script defer src="highlight-lua.min.js"></script>
+  <script type="module" src="messenger.js?v=appearance-collections"></script>
+</head>
+<body>
+  <p id="desktop-connection" role="status" hidden></p>
+  <section id="welcome" class="welcome" aria-labelledby="brand">
+    <a href="/">← BrokenSynapse</a>
+    <h1 id="brand"><img src="wordmark.png" alt="Horizon Chat" width="2172" height="724"></h1>
+    <form id="authentication">
+      <h2 id="auth-title">Sign in</h2>
+      <label>Sign-in username <input name="username" autocomplete="username" minlength="3" maxlength="29" required></label>
+      <label id="tag-field" hidden>Preferred tag (optional)
+        <input name="tag" maxlength="4" pattern="[A-Za-z0-9]{4}" placeholder="A4Z9" aria-describedby="tag-help" disabled>
+        <small id="tag-help">Your public handle uses your display name and a four-character tag. We’ll assign an available tag if needed.</small>
+      </label>
+      <label id="display-field" hidden>Display name (optional) <input name="displayName" maxlength="40"></label>
+      <label>Passphrase <input name="password" type="password" minlength="5" autocomplete="current-password" required></label>
+      <p id="auth-status" role="status"></p>
+      <div class="actions">
+        <button class="primary" type="submit">Sign in</button>
+        <button id="auth-mode" type="button">Create an account</button>
+        <button id="open-recovery" type="button">Recover account</button>
+      </div>
+    </form>
+    <button id="open-offline-replicas" type="button" hidden>Recover from this device</button>
+  </section>
+  <dialog id="offline-replicas" aria-labelledby="offline-replica-heading">
+    <h2 id="offline-replica-heading">Device recovery copies</h2>
+    <label>Latest local backup <select data-offline-replica="archives"></select></label>
+    <label>Archive recovery key <input data-offline-replica="key" type="password" autocomplete="off" maxlength="64"></label>
+    <button data-offline-replica="verify" type="button">Verify local chain</button>
+    <button data-offline-replica="close" type="button">Close</button>
+    <ul data-offline-replica="downloads"></ul>
+    <p data-offline-replica="status" role="status"></p>
+  </dialog>
+  <div id="app" class="app" hidden>
+    <div class="navigation-rails">
+    <nav class="rail" aria-label="Horizon Chat">
+      <div class="rail-top">
+      <button id="inbox" type="button" class="logo rail-control rail-artwork selected" aria-label="Direct messages" title="Direct messages">
+        <img class="rail-logo" src="singularity-logo.png?v=2" alt="" width="40" height="40">
+        <img id="dm-unread" class="unread-badge" data-theme-image="ping" alt="" hidden>
+      </button>
+      </div>
+      <div id="server-scroll" class="rail-items">
+      <div id="server-list" aria-label="Servers"></div>
+      <button id="add-server" type="button" class="rail-control" aria-label="Add a server" title="Add a server">＋</button>
+      </div>
+    </nav>
+    <nav id="persona-rail" class="persona-rail" aria-label="Personas" hidden>
+      <div class="rail-top">
+      <button id="account-persona" class="rail-control persona-button" type="button" aria-label="Return to your account" title="Return to your account"></button>
+      </div>
+      <div id="persona-list" class="rail-items" aria-label="Character personas"></div>
+    </nav>
+    </div>
+    <aside class="sidebar" aria-label="Direct messages">
+      <header class="sidebar-header">
+        <button id="inbox-title" type="button" aria-label="Open contacts">Direct Messages</button>
+        <button id="new-message" class="icon" aria-label="New direct message" title="New direct message">＋</button>
+      </header>
+      <ul id="conversations"></ul>
+      <section id="server-sidebar" hidden>
+        <header class="sidebar-header">
+          <strong id="server-name"></strong>
+          <button id="server-settings-toggle" class="icon" type="button" aria-label="Server settings" title="Server settings" aria-haspopup="dialog" aria-controls="server-settings-screen" hidden><img class="menu-icon" data-theme-image="settings" alt="" width="31" height="31"></button>
+        </header>
+        <div class="channel-heading">
+          <span>Channels</span>
+          <button id="channel-menu-button" type="button" aria-label="Channel actions" title="Channel actions" hidden>⋯</button>
+        </div>
+        <ul id="server-channels" class="channel-tree"></ul>
+      </section>
+    </aside>
+    <footer class="account">
+      <button id="own-profile" class="account-profile" type="button" aria-label="View your profile">
+        <span id="avatar" class="avatar"></span>
+        <span class="account-copy-window"><span class="account-profile-text">
+          <strong id="username"></strong>
+          <span id="account-status" hidden></span>
+        </span></span>
+      </button>
+      <div id="persona-variant-controls" hidden><button id="previous-persona-variant" type="button" aria-label="Previous character variant">‹</button><button id="current-persona-variant" type="button" aria-label="Choose character variant" aria-haspopup="menu" aria-controls="persona-variant-menu">Main</button><button id="next-persona-variant" type="button" aria-label="Next character variant">›</button></div>
+      <button id="settings" class="icon" aria-label="Account settings" title="Account settings"><img class="menu-icon" data-theme-image="settings" alt="" width="31" height="31"></button>
+    </footer>
+    <main class="chat">
+      <header class="chat-header">
+        <button id="back" class="icon" aria-label="Back to direct messages">‹</button>
+        <div class="thread-heading"><button id="thread-title" type="button" disabled>Direct Messages</button><span id="channel-topic" hidden></span><span id="channel-kind" hidden></span><button id="close-broadcast" type="button" hidden>Close chat</button></div>
+        <span id="restart-notice" role="status" hidden></span>
+        <button id="chat-unread" class="icon" type="button" aria-label="Unread direct messages" hidden><img class="unread-badge" data-theme-image="ping" alt=""></button>
+        <span id="sending-as" hidden></span><button id="chat-variant-selector" type="button" aria-label="Choose variant while chatting" aria-haspopup="menu" aria-controls="persona-variant-menu" hidden>Main ▾</button>
+        <button id="toggle-map-view" type="button" hidden>Chat</button>
+        <button id="toggle-server-members" type="button" aria-controls="server-members" aria-expanded="false" hidden>Members</button>
+        <button type="button" id="format-toggle" class="icon" aria-label="Formatting tools" title="Formatting tools" aria-controls="format-panel" aria-expanded="false" hidden><img class="menu-icon" data-theme-image="tools" alt="" width="31" height="31"></button>
+      </header>
+      <div id="format-tray" hidden>
+        <div id="format-panel" class="format-panel" inert><div class="format-fonts"><div><label for="font-family-select">Font family</label><select id="font-family-select" aria-label="Font family"><option value="">Default Font</option><option value="Open Sans">Open Sans</option><option value="Noto Serif">Noto Serif</option><option value="Liberation Mono">Liberation Mono</option><option value="DejaVu Sans">DejaVu Sans</option><optgroup label="Theme fonts"><option value="Milonga">Milonga</option><option value="Play">Play</option><option value="Shippori Mincho B1">Shippori Mincho B1</option><option value="Noto Sans">Noto Sans</option></optgroup></select></div><div><label for="font-size-select">Text size</label><select id="font-size-select" aria-label="Text size"><option value="">Default</option><option value="10">10 px</option><option value="11">11 px</option><option value="12">12 px</option><option value="13">13 px</option><option value="14">14 px</option><option value="16">16 px</option><option value="18">18 px</option><option value="20">20 px</option><option value="24">24 px</option><option value="28">28 px</option><option value="32">32 px</option><option value="36">36 px</option><option value="48">48 px</option><option value="64">64 px</option><option value="72">72 px</option></select></div></div><div class="format-row"><button type="button" data-format="bold" title="Bold">𝐁</button><button type="button" data-format="italic" title="Italic"><i>I</i></button><button type="button" data-format="strike" title="Strikethrough"><s>S</s></button><button type="button" data-format="underline" title="Underline"><u>U</u></button><button type="button" data-format="superscript" title="Superscript">x²</button><button type="button" data-format="subscript" title="Subscript">x₂</button><button type="button" data-format="quote" title="Quote">❞</button><button type="button" data-format="inline" title="Inline code">&lt;/&gt;</button><button type="button" data-format="link" title="Link">🔗</button><button type="button" data-format="list" title="Bullet list">☷</button><button type="button" data-format="ordered" title="Numbered list">1.</button><button type="button" data-format="code" title="Code block">{ }</button><button type="button" data-format="left" title="Align left">☰←</button><button type="button" data-format="center" title="Align center">☰</button><button type="button" data-format="right" title="Align right">☰→</button><button type="button" data-format="justify" title="Justify">≡</button></div><div class="format-code"><label for="code-language">Whole-message code highlighting</label><select id="code-language"><option value="">Syntax Highlighting</option><optgroup label="Popular languages"><option value="plaintext">Plain text</option><option value="bash">Bash / Shell</option><option value="c">C</option><option value="csharp">C#</option><option value="cpp">C++</option><option value="css">CSS</option><option value="go">Go</option><option value="html">HTML</option><option value="java">Java</option><option value="javascript">JavaScript</option><option value="json">JSON</option><option value="kotlin">Kotlin</option><option value="lua">Lua</option><option value="markdown">Markdown</option><option value="php">PHP</option><option value="python">Python</option><option value="rust">Rust</option><option value="sql">SQL</option><option value="typescript">TypeScript</option><option value="xml">XML</option><option value="yaml">YAML</option></optgroup></select></div></div>
+      </div>
+      <section id="channel-map" aria-label="Channel map" hidden>
+        <div class="map-toolbar">
+          <button id="map-tools" type="button" aria-haspopup="dialog">Map actions</button>
+          <select id="map-locations" aria-label="Map locations"><option value="">Map locations</option></select>
+          <div class="map-zoom" aria-label="Zoom">
+            <button id="map-zoom-out" type="button" aria-label="Zoom out">−</button>
+            <button id="map-reset" type="button" aria-label="Fit map">Fit</button>
+            <button id="map-zoom-in" type="button" aria-label="Zoom in">+</button>
+          </div>
+        </div>
+        <div id="map-viewport" tabindex="0" aria-label="Map canvas">
+          <div id="map-stage">
+            <img id="map-background" alt="" draggable="false" hidden>
+            <canvas id="map-regions" aria-hidden="true"></canvas>
+            <div id="map-points"></div>
+          </div>
+          <div id="map-empty" hidden><p>This map is empty.</p><button id="map-add-background" type="button">Add map</button></div>
+        </div>
+        <div class="map-status-row">
+          <p id="map-status" role="status"></p>
+          <button id="map-finish" type="button" hidden>Finish region</button>
+          <button id="map-cancel" type="button" hidden>Cancel</button>
+        </div>
+        <input id="map-background-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+      </section>
+      <section id="channel-timeline" aria-label="Channel timeline" hidden>
+        <div class="timeline-toolbar">
+          <div class="view-switch" aria-label="Timeline views">
+            <button id="timeline-list-view" type="button" aria-pressed="true">Timeline</button>
+            <button id="timeline-calendar-view" type="button" aria-pressed="false">Calendar</button>
+          </div>
+          <button id="timeline-time-system" type="button" hidden>Time system</button>
+          <button id="timeline-add-event" class="primary" type="button" hidden>Add event</button>
+        </div>
+        <p id="timeline-status" role="status"></p>
+        <div id="timeline-content"></div>
+      </section>
+      <section id="history" aria-label="Conversation history" tabindex="0">
+        <button id="older" hidden>Load older messages</button>
+        <ol id="direct-messages"></ol>
+        <p id="empty">Use ＋ to open a conversation by handle.</p>
+      </section>
+      <div id="channel-extras" hidden></div>
+      <p id="channel-readonly" hidden>This channel is read-only.</p>
+      <section id="channel-password-gate" hidden><h2>Locked channel</h2><p>Enter this channel’s password to view its contents and join in.</p><form id="unlock-channel"><label>Channel password<input name="password" type="password" autocomplete="off" maxlength="128" required></label><button type="submit" class="primary">Unlock channel</button><p role="status"></p></form></section>
+      <div id="reply-draft" hidden>
+        <span id="reply-draft-preview" role="status"></span>
+        <button id="cancel-reply" type="button" aria-label="Cancel reply" title="Cancel reply">×</button>
+      </div>
+      <div id="typing-indicator" role="status" aria-live="polite" hidden></div>
+      <form id="composer" hidden>
+        <div id="attachment-preview" hidden></div>
+        <button type="button" id="attach-file" class="format-wrench" aria-label="Attach file" title="Attach file">📎</button>
+        <div id="emoji-suggestions" role="listbox" aria-label="Emoji suggestions" hidden></div>
+        <div id="draft" aria-controls="emoji-suggestions" contenteditable="true" role="textbox" aria-label="Message" aria-multiline="true" data-placeholder="Message..." spellcheck="true"></div>
+        <textarea id="code-draft" rows="1" maxlength="100000" aria-label="Code message" spellcheck="false" hidden></textarea>
+        <input type="file" id="attachment-file" hidden>
+        <button id="dice-toggle" type="button" aria-label="Roll dice" aria-expanded="false" aria-controls="dice-tray" title="Roll dice"><img id="dice-button-art" alt="" width="30" height="30"></button>
+        <div id="dice-tray" hidden aria-label="Dice">
+          <label class="dice-expression-label" for="dice-expression">Dice expression</label>
+          <div class="dice-expression-row"><input id="dice-expression" type="text" maxlength="160" placeholder="2d6+1d20" autocomplete="off" spellcheck="false"><button id="roll-expression" type="button">Roll</button></div>
+          <p id="dice-status" role="status"></p>
+          <button type="button" data-die="2">D2</button><button type="button" data-die="4">D4</button>
+          <button type="button" data-die="6">D6</button><button type="button" data-die="8">D8</button>
+          <button type="button" data-die="10">D10</button><button type="button" data-die="12">D12</button>
+          <button type="button" data-die="20">D20</button><button type="button" data-die="100">D100</button>
+        </div>
+        <button id="mobile-send" class="icon" type="submit" aria-label="Send message">↑</button>
+        <span id="character-count" role="status" hidden></span>
+        <div id="message-edit-controls" hidden>
+          <span>Esc to <button id="cancel-message-edit" type="button">cancel</button> · Enter to <button id="save-message-edit" type="submit">save</button></span>
+          <span id="message-editor-status" role="status"></span>
+        </div>
+      </form>
+      <p id="chat-status" role="status"></p>
+      <button id="cancel-image-encoding" type="button" hidden>Cancel image encoding</button>
+    </main>
+    <aside id="server-members" aria-label="Server members" hidden>
+      <div id="server-member-panel">
+        <header><h2>Members</h2><button id="server-invite" type="button" hidden>Invite</button></header>
+        <ul id="server-people"></ul>
+      </div>
+      <section id="map-details" aria-label="Map details" hidden></section>
+    </aside>
+  </div>
+  <dialog id="timeline-event" class="server-dialog" aria-labelledby="timeline-event-heading">
+    <button class="settings-close icon" type="button" data-close aria-label="Close event">×</button>
+    <h2 id="timeline-event-heading">Add event</h2>
+    <form>
+      <label for="timeline-event-title">Event name</label>
+      <input id="timeline-event-title" name="title" maxlength="120" required>
+      <div class="timeline-date-fields">
+        <label>Year <input name="year" type="number" min="-999999" max="999999" required></label>
+        <label for="timeline-event-month">Month <select id="timeline-event-month" name="month"></select></label>
+        <label>Day <input name="day" type="number" min="1" required></label>
+      </div>
+      <label>Description <textarea name="description" rows="5" maxlength="4000"></textarea></label>
+      <p role="status"></p>
+      <div class="actions">
+        <button class="danger" id="timeline-delete-event" type="button" hidden>Delete event</button>
+        <button type="button" data-close>Close</button>
+        <button class="primary" type="submit">Save event</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="time-system" aria-labelledby="time-system-heading">
+    <button class="settings-close icon" type="button" data-close aria-label="Close time system">×</button>
+    <div class="time-shell">
+      <nav aria-label="Time system sections">
+        <h2 id="time-system-heading">Time system</h2>
+        <button type="button" data-time-tab="overview">Overview</button>
+        <button type="button" data-time-tab="months">Months</button>
+        <button type="button" data-time-tab="week">Week</button>
+        <button type="button" data-time-tab="day">Day</button>
+        <button type="button" data-time-tab="eras">Years and eras</button>
+      </nav>
+      <form novalidate>
+        <section data-time-section="overview">
+          <h3>Overview</h3>
+          <label for="time-preset">Calendar preset</label>
+          <select id="time-preset" name="preset"><option value="gregorian">Gregorian</option><option value="custom">Custom</option></select>
+          <dl id="time-overview-stats"></dl>
+        </section>
+        <section data-time-section="months" hidden>
+          <h3>Months</h3>
+          <label>Month name and number of days <textarea name="months" data-custom-time rows="12" placeholder="First Light | 30"></textarea></label>
+          <small>Enter one month per line, with a vertical bar before the day count.</small>
+        </section>
+        <section data-time-section="week" hidden>
+          <h3>Week</h3>
+          <label>Weekday names <textarea name="weekdays" data-custom-time rows="8"></textarea></label>
+          <small>Enter one weekday per line, starting with the first day of the week.</small>
+        </section>
+        <section data-time-section="day" hidden>
+          <h3>Day</h3>
+          <label>Hours per day <input name="hours" data-custom-time type="number" min="1" max="100"></label>
+          <label>Minutes per hour <input name="minutes" data-custom-time type="number" min="1" max="100"></label>
+        </section>
+        <section data-time-section="eras" hidden>
+          <h3>Years and eras</h3>
+          <label>Era name and starting year <textarea name="eras" data-custom-time rows="7" placeholder="After the Crossing | 1"></textarea></label>
+          <small>Enter one era per line, with a vertical bar before its starting year.</small>
+        </section>
+        <footer>
+          <p role="status"></p>
+          <div class="actions"><button type="button" data-close>Cancel</button><button class="primary" type="submit">Save time system</button></div>
+        </footer>
+      </form>
+    </div>
+  </dialog>
+  <div id="map-menu" popover role="dialog" aria-label="Map actions">
+    <button type="button" data-map-action="pin">Add pin</button>
+    <button type="button" data-map-action="label">Add label</button>
+    <button type="button" data-map-action="region">Draw region</button>
+    <button type="button" data-map-action="details">View details</button>
+    <button type="button" data-map-action="background">Change map image</button>
+    <button type="button" data-map-action="remove-background">Remove map image</button>
+  </div>
+  <div id="server-actions" popover aria-label="Server actions"></div>
+  <div id="dm-actions" popover><button id="dm-view-profile" type="button">View profile</button>
+    <button id="close-dm" type="button">Close DM</button>
+    <button id="invite-person-action" type="button">Invite to server</button>
+    <button id="member-roles-action" type="button">Manage roles</button>
+    <button id="kick-member-action" class="danger" type="button">Kick member</button>
+  </div>
+  <dialog id="recover-account" aria-labelledby="recover-heading">
+    <button class="settings-close icon" type="button" data-close aria-label="Close recovery">×</button>
+    <h2 id="recover-heading">Recover account</h2>
+    <form id="recover-form">
+      <label>Username <input name="username" autocomplete="username" maxlength="29" required></label>
+      <label>Recovery code <input name="code" minlength="16" maxlength="16" autocomplete="off" spellcheck="false" required></label>
+      <label>New password <input name="newPassword" type="password" minlength="5" maxlength="512" autocomplete="new-password" required></label>
+      <label>Confirm new password <input name="confirmPassword" type="password" minlength="5" maxlength="512" autocomplete="new-password" required></label>
+      <p id="recover-status" role="status"></p>
+      <button class="primary" type="submit">Reset password and sign in</button>
+    </form>
+  </dialog>
+  <dialog id="recovery-code-dialog" aria-labelledby="recovery-code-heading">
+    <h2 id="recovery-code-heading">Save your recovery code</h2>
+    <p>This code is shown once. Keep it somewhere safe. You can use it once to reset your password.</p>
+    <label>Recovery code <input id="recovery-code-value" readonly></label>
+    <div class="actions">
+      <button id="copy-recovery-code" type="button">Copy code</button>
+      <button type="button" data-close class="primary">Done</button>
+    </div>
+    <p id="recovery-code-status" role="status"></p>
+  </dialog>
+  <dialog id="server-create" aria-labelledby="server-create-heading">
+    <button class="settings-close icon" type="button" data-close aria-label="Close add server">×</button>
+    <h2 id="server-create-heading">Customize your server</h2>
+    <form id="create-server-form">
+      <button id="pick-server-icon" type="button" aria-label="Upload server icon"><span>＋<small>Upload icon</small></span><img id="server-icon-preview" alt="" hidden></button>
+      <input id="server-icon-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+      <label>Server name <input name="name" maxlength="80" required></label>
+      <p id="server-create-status" role="status"></p>
+      <div class="actions"><button id="open-join-server" type="button">Join a server</button><button type="submit" class="primary">Create</button></div>
+    </form>
+  </dialog>
+  <dialog id="server-join" aria-labelledby="server-join-heading">
+    <button class="settings-close icon" type="button" data-close aria-label="Close join server">×</button>
+    <h2 id="server-join-heading">Join a server</h2>
+    <form id="join-server-form">
+      <label>Invite code <input name="code" autocomplete="off" maxlength="12" required></label>
+      <p id="server-join-status" role="status"></p>
+      <button type="submit" class="primary">Join</button>
+    </form>
+  </dialog>
+  <dialog id="server-invite-dialog" aria-labelledby="server-invite-heading">
+    <button class="settings-close icon" type="button" data-close aria-label="Close invite">×</button>
+    <h2 id="server-invite-heading">Invite to server</h2>
+    <label>Invite code <input id="server-invite-code" readonly></label>
+    <button id="copy-server-invite" type="button" class="primary">Copy code</button>
+    <p id="server-invite-status" role="status"></p>
+  </dialog>
+  <dialog id="server-settings-screen" aria-labelledby="server-settings-title">
+    <div class="settings-shell">
+      <nav aria-label="Server settings">
+        <h2 id="server-settings-title">Server settings</h2>
+        <button id="edit-server-profile" type="button" data-server-tab="profile" aria-controls="server-profile-editor">Server Profile</button>
+        <button type="button" data-server-tab="members" aria-controls="server-settings-members">Members</button>
+        <button id="manage-server-roles" type="button" data-server-tab="roles" aria-controls="role-editor">Roles</button>
+        <button id="manage-server-emojis" type="button" data-server-tab="emojis" aria-controls="server-emoji-settings">Emojis</button>
+        <button id="view-server-audit" type="button" data-server-tab="audit" aria-controls="server-audit">Audit Log</button>
+        <button id="open-server-delete" type="button" class="danger">Delete Server</button>
+      </nav>
+      <div class="server-settings-main">
+        <button class="settings-close icon" type="button" data-close aria-label="Close server settings">&times;</button>
+        <div class="server-settings-body">
+          <section id="server-profile-editor" data-server-page="profile" hidden aria-labelledby="server-profile-heading">
+            <h2 id="server-profile-heading">Server profile</h2>
+            <div class="server-profile-layout">
+              <form>
+                <label>Server name <input name="name" required maxlength="80"></label>
+                <label>Server icon <input name="icon" type="file" accept="image/png,image/jpeg,image/webp,image/gif"></label>
+                <label class="role-option"><input name="removeIcon" type="checkbox"> Remove server icon</label>
+                <label>Server theme <select name="theme"><option value="horizon">Horizon</option><option value="basic-light">Basic Light</option><option value="basic-mid">Basic Mid</option><option value="basic-dark">Basic Dark</option><option value="vanilla">Vanilla</option><option value="sage">Sage</option><option value="cinnamon">Cinnamon</option><option value="lavender">Lavender</option><option value="nutmeg">Nutmeg</option><option value="clove">Clove</option><option value="d2-steel">D2 Steel</option><option value="burnt-titanium">Burnt Titanium</option></select></label>
+                <small>Members see this theme while visiting your server. They can opt out in Appearance.</small>
+                <p role="status"></p>
+                <div class="actions"><button class="primary" type="submit">Save server profile</button></div>
+              </form>
+              <aside class="server-preview" aria-label="Server profile preview">
+                <div id="server-preview-background"></div>
+                <div class="server-preview-info">
+                  <div id="server-preview-icon" aria-hidden="true"></div>
+                  <strong id="server-preview-name"></strong>
+                  <small id="server-preview-members"></small>
+                </div>
+              </aside>
+            </div>
+          </section>
+          <section id="server-settings-members" data-server-page="members" aria-labelledby="server-settings-members-heading" hidden>
+            <h2 id="server-settings-members-heading">Members</h2>
+            <label>Find a member <input id="server-member-search" type="search"></label>
+            <p id="server-member-status" role="status"></p>
+            <ul id="server-settings-member-list"></ul>
+          </section>
+          <section id="role-editor" data-server-page="roles" hidden aria-labelledby="role-editor-heading">
+            <h2 id="role-editor-heading">Server roles</h2>
+            <div class="server-role-layout">
+              <div id="server-role-list" aria-label="Roles"></div>
+              <form>
+                <label>Name <input name="name" required maxlength="48"></label>
+                <fieldset id="role-colors">
+                  <legend>Role colors</legend>
+                  <label>Color style <select id="role-color-style"><option value="0">Default</option><option value="1">Solid</option><option value="2">Two-color gradient</option><option value="3">Three-color gradient</option></select></label>
+                  <div id="role-color-stops"></div>
+                  <div id="role-color-preview">Role color preview</div>
+                </fieldset>
+                <fieldset><legend>Permissions</legend>
+                  <label class="role-option"><input name="invite" type="checkbox"> Create invites</label>
+                  <label class="role-option"><input name="channels" type="checkbox"> Manage channels</label>
+                  <label class="role-option"><input name="canManageEmojis" type="checkbox"> Manage emojis</label>
+                  <label class="role-option"><input name="canManageRoles" type="checkbox"> Manage roles</label>
+                  <label class="role-option"><input name="canAttach" type="checkbox"> Attach files</label>
+                  <label class="role-option"><input name="canMentionRoles" type="checkbox"> Ping everyone and roles</label>
+                  <label class="role-option"><input name="canManageMessages" type="checkbox"> Manage messages</label>
+                  <label class="role-option"><input name="administrator" type="checkbox"> Administrator</label>
+                  <small>Administrators can also edit the server profile, view its activity log, and remove members.</small>
+                </fieldset>
+                <p role="status"></p>
+                <div class="actions"><button type="button" id="raise-role">Move up</button><button type="button" id="lower-role">Move down</button><button type="button" id="delete-role">Delete role</button><button class="primary" type="submit">Save role</button></div>
+              </form>
+            </div>
+          </section>
+          <section id="server-emoji-settings" data-server-page="emojis" hidden aria-labelledby="server-emoji-heading">
+            <h2 id="server-emoji-heading">Server emojis</h2>
+            <form>
+              <label>Emoji name <input name="name" required maxlength="32" pattern="[A-Za-z0-9_]{2,32}"></label>
+              <label>Emoji image <input name="image" type="file" accept="image/png,image/webp,image/gif" required></label>
+              <p role="status"></p>
+              <button class="primary" type="submit">Upload emoji</button>
+            </form>
+            <ul id="server-emoji-list"></ul>
+            <details id="retired-emoji-settings" hidden>
+              <summary>Deleted emoji artwork</summary>
+              <ul id="retired-emoji-list"></ul>
+            </details>
+          </section>
+          <section id="server-audit" data-server-page="audit" hidden aria-labelledby="server-audit-heading">
+            <h2 id="server-audit-heading">Audit Log</h2>
+            <p role="status"></p>
+            <ol></ol>
+            <button id="older-server-audit" type="button" hidden>Load older activity</button>
+          </section>
+        </div>
+      </div>
+    </div>
+  </dialog>
+  <dialog id="server-delete" class="server-dialog" aria-labelledby="server-delete-heading">
+    <button class="settings-close icon" type="button" data-close aria-label="Cancel server deletion">&times;</button>
+    <h2 id="server-delete-heading">Delete server</h2>
+    <form>
+      <p>This permanently deletes the server, its channels, and their messages.</p>
+      <label id="confirm-server-name"></label>
+      <input name="name" aria-labelledby="confirm-server-name" required maxlength="80" autocomplete="off">
+      <p role="status"></p>
+      <div class="actions"><button class="danger" type="submit">Permanently delete server</button></div>
+    </form>
+  </dialog>
+  <div id="channel-actions" popover aria-label="Channel actions"></div>
+  <dialog id="channel-editor" class="server-dialog" aria-labelledby="channel-editor-heading">
+    <h2 id="channel-editor-heading"></h2>
+    <button class="settings-close icon" type="button" data-close aria-label="Close channel editor">&times;</button>
+    <div class="channel-editor-layout">
+      <nav aria-label="Channel settings">
+        <button type="button" data-channel-tab="overview" aria-controls="channel-overview">Overview</button>
+        <button type="button" data-channel-tab="permissions" aria-controls="channel-permissions">Permissions</button>
+        <button type="button" id="delete-channel" class="danger">Delete channel</button>
+      </nav>
+      <form>
+        <section id="channel-overview" data-channel-page="overview">
+          <h3>Overview</h3>
+          <label>Channel Name <input name="name" required maxlength="65"></label>
+          <label>Channel type <select name="kind"><option value="text">Text</option><option value="voice">Voice</option><option value="forum">Forum</option><option value="map">Map</option><option value="timeline">Timeline</option></select></label>
+          <label>Channel Topic <textarea name="topic" rows="5" maxlength="1024" placeholder="Let everyone know what this channel is for"></textarea></label>
+        </section>
+        <section id="channel-permissions" data-channel-page="permissions" hidden>
+          <h3>Channel Permissions</h3>
+          <p class="permission-description">Choose who can view this channel.</p>
+          <p id="channel-parent-permissions" class="permission-card" hidden></p>
+          <label class="permission-card private-channel">
+            <span><strong>Private Channel</strong><small>Only administrators and roles you allow can view this channel.</small></span>
+            <input id="channel-private" type="checkbox" role="switch">
+          </label>
+          <details id="channel-advanced-permissions">
+            <summary>Advanced permissions</summary>
+            <div class="channel-permissions-grid">
+              <div class="permission-roles">
+                <div class="permission-role-heading">
+                  <span>Roles</span>
+                  <button id="add-channel-permission" type="button" aria-label="Add role override" title="Add role override" aria-controls="channel-permission-role-picker">+</button>
+                </div>
+                <select id="channel-permission-role-picker" aria-label="Choose a role" hidden></select>
+                <div id="channel-permission-role-list"></div>
+              </div>
+              <div>
+                <h4>General Channel Permissions</h4>
+                <fieldset class="permission-rule">
+                  <legend>View Channel</legend>
+                  <div class="permission-rule-content">
+                    <small id="channel-visibility-description"></small>
+                    <div class="permission-options">
+                      <label title="Deny"><input type="radio" name="visibility" value="-1" aria-label="Deny"><span aria-hidden="true">&times;</span></label>
+                      <label title="Inherit"><input type="radio" name="visibility" value="0" aria-label="Inherit"><span aria-hidden="true">/</span></label>
+                      <label title="Allow"><input type="radio" name="visibility" value="1" aria-label="Allow"><span aria-hidden="true">&#10003;</span></label>
+                    </div>
+                  </div>
+                </fieldset>
+                <fieldset class="permission-rule" data-message-rule="send">
+                  <legend>Send Messages</legend>
+                  <div class="permission-rule-content">
+                    <small>Members without this permission can read the channel.</small>
+                    <div class="permission-options">
+                      <label title="Deny"><input type="radio" name="send" value="-1" aria-label="Deny Send Messages"><span aria-hidden="true">&times;</span></label>
+                      <label title="Inherit"><input type="radio" name="send" value="0" aria-label="Inherit Send Messages"><span aria-hidden="true">/</span></label>
+                      <label title="Allow"><input type="radio" name="send" value="1" aria-label="Allow Send Messages"><span aria-hidden="true">&#10003;</span></label>
+                    </div>
+                  </div>
+                </fieldset>
+                <fieldset class="permission-rule" data-message-rule="manage">
+                  <legend>Manage Messages</legend>
+                  <div class="permission-rule-content">
+                    <small>Allows members to delete other people’s messages in this channel.</small>
+                    <div class="permission-options">
+                      <label title="Deny"><input type="radio" name="manage" value="-1" aria-label="Deny Manage Messages"><span aria-hidden="true">&times;</span></label>
+                      <label title="Inherit"><input type="radio" name="manage" value="0" aria-label="Inherit Manage Messages"><span aria-hidden="true">/</span></label>
+                      <label title="Allow"><input type="radio" name="manage" value="1" aria-label="Allow Manage Messages"><span aria-hidden="true">&#10003;</span></label>
+                    </div>
+                  </div>
+                </fieldset>
+              </div>
+            </div>
+          </details>
+        </section>
+        <p role="status"></p>
+        <div class="actions"><button class="primary" type="submit">Save channel</button></div>
+      </form>
+    </div>
+  </dialog>
+  <dialog id="member-roles" class="server-dialog" aria-labelledby="member-roles-heading">
+    <button class="settings-close icon" type="button" data-close aria-label="Close member roles">&times;</button>
+    <h2 id="member-roles-heading"></h2>
+    <form>
+      <fieldset><legend>Roles</legend><div class="role-checkboxes"></div></fieldset>
+      <p role="status"></p>
+      <div class="actions"><button class="primary" type="submit">Save roles</button></div>
+    </form>
+  </dialog>
+  <dialog id="invite-person" class="server-dialog" aria-labelledby="invite-person-heading">
+    <button class="settings-close icon" type="button" data-close aria-label="Close server picker">&times;</button>
+    <h2 id="invite-person-heading"></h2>
+    <div class="invite-options"></div>
+    <p role="status"></p>
+  </dialog>
+  <div id="message-actions" popover>
+    <button id="reply-message" type="button">Reply</button>
+    <button id="edit-message" type="button">Edit message</button>
+    <button id="delete-message" type="button">Delete message</button>
+  </div>
+  <dialog id="contacts-menu" aria-labelledby="contacts-heading">
+    <button class="settings-close icon" type="button" data-close aria-label="Close contacts">×</button>
+    <div class="inbox-screen">
+      <header class="inbox-screen-header">
+        <h2 id="contacts-heading">Contacts</h2>
+        <div class="contacts-actions"><button id="add-contact" class="primary picker-action" type="button">Add contact</button>
+          <button id="open-contacts-inbox" class="picker-action" type="button">Go to inbox</button></div>
+        <label>Search contacts <input id="contact-search" type="search"></label>
+      </header>
+      <p id="contacts-status" role="status"></p>
+
+      <section id="contact-unread" aria-labelledby="contact-unread-heading" hidden>
+        <h3 id="contact-unread-heading">Unread conversations</h3>
+        <div id="contact-unread-list"></div>
+      </section>
+      <p id="contacts-empty" hidden></p>
+      <div id="contact-options" class="inbox-grid"></div>
+    </div>
+  </dialog>
+  <dialog id="contact-editor" aria-labelledby="contact-editor-heading">
+    <form>
+      <h2 id="contact-editor-heading">Add contact</h2>
+      <label>Display name and tag <input name="handle" required maxlength="45" autocomplete="off" placeholder="Display Name#4423"></label>
+      <p role="status"></p>
+      <div class="actions">
+        <button class="primary" type="submit">Add contact</button>
+        <button type="button" data-close>Cancel</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="recipient">
+    <form>
+      <h2>New direct message</h2>
+      <label>Display name and tag <input name="handle" required maxlength="45" autocomplete="off" placeholder="Display Name#4423"></label>
+      <p role="status"></p>
+      <div class="actions">
+        <button class="primary" type="submit">Open conversation</button>
+        <button type="button" data-close>Cancel</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="document-reader" aria-labelledby="document-title">
+    <header class="document-toolbar">
+      <h2 id="document-title"></h2>
+      <button type="button" data-close aria-label="Close file">×</button>
+    </header>
+    <pre tabindex="0"><code id="document-content"></code></pre>
+    <img id="document-image" alt="" hidden>
+    <p id="document-status" role="status"></p>
+    <div class="document-toolbar">
+      <button type="button" id="document-more">Load next chunk</button>
+      <button type="button" id="document-all">Load full file</button>
+      <button type="button" id="document-copy">Copy loaded text</button>
+      <button type="button" id="document-download">Download file</button>
+    </div>
+  </dialog>
+  <section id="mini-profile" popover aria-labelledby="mini-name">
+    <div class="mini-banner">
+      <button id="close-profile" class="icon" type="button" aria-label="Close profile">×</button>
+    </div>
+    <div class="mini-content">
+      <div id="mini-avatar"></div>
+      <h2 id="mini-name"></h2>
+      <p id="mini-handle"></p>
+      <p id="mini-status"></p>
+      <p id="mini-bio"></p>
+      <button id="mini-settings" type="button">Edit profile</button>
+      <div id="mini-variant-controls" hidden><button id="mini-previous-variant" type="button" aria-label="Previous variant">‹</button><span id="mini-variant-name"></span><button id="mini-next-variant" type="button" aria-label="Next variant">›</button></div>
+      <div class="mini-footer">
+        <button id="mini-body-toggle" type="button" class="body-toggle person-logo" aria-label="View full-body image" title="View full-body image" hidden></button>
+        <dl id="mini-member" class="member-since"><dt>Member Since</dt><dd></dd></dl>
+        <button id="mini-dm" class="icon" type="button" aria-label="Direct message" title="Direct message">
+          <img class="menu-icon" data-theme-image="dm" alt="" width="31" height="31">
+        </button>
+      </div>
+      <p id="mini-dm-status" role="status"></p>
+    </div>
+    <div id="mini-full-body" class="full-body-panel" hidden></div>
+  </section>
+  <dialog id="preferences" aria-labelledby="settings-heading">
+    <div class="settings-shell">
+      <nav aria-label="Settings sections">
+        <h2 id="settings-heading">Settings</h2>
+        <button type="button" data-settings-page="account" aria-controls="settings-account">Account</button>
+        <button type="button" data-settings-page="profile" aria-controls="settings-profile">Profile</button>
+        <button type="button" id="open-character-dashboard" data-settings-page="characters" aria-controls="characters-menu">Characters</button>
+        <button type="button" data-settings-page="appearance" aria-controls="settings-appearance">Appearance</button>
+        <button type="button" data-settings-page="media" aria-controls="settings-media">Media</button>
+        <button type="button" data-settings-page="backups" aria-controls="settings-backups">Backups</button>
+        <button type="button" data-settings-page="about" aria-controls="settings-about">About</button>
+      </nav>
+      <div class="settings-main">
+        <section id="settings-account" class="settings-page">
+          <h2>Account</h2>
+          <dl class="settings-account-name"><dt>Sign-in username</dt><dd id="settings-account-handle"></dd></dl>
+          <div class="settings-row">
+            <label for="share-typing">Show when I’m typing</label>
+            <input id="share-typing" type="checkbox" checked>
+          </div>
+          <p id="typing-setting-status" role="status"></p>
+          <details class="settings-disclosure">
+            <summary><span>Change password</span></summary>
+            <div class="settings-disclosure-body">
+              <form id="change-password">
+                <label>Current password <input name="currentPassword" type="password" autocomplete="current-password" minlength="5" maxlength="512" required></label>
+                <label>New password <input name="newPassword" type="password" autocomplete="new-password" minlength="5" maxlength="512" required></label>
+                <label>Confirm new password <input name="confirmPassword" type="password" autocomplete="new-password" minlength="5" maxlength="512" required></label>
+                <button class="primary" type="submit">Change password</button>
+                <p id="password-status" role="status"></p>
+              </form>
+            </div>
+          </details>
+          <details class="settings-disclosure">
+            <summary><span>Sign-in recovery code<small>Get back into your account if you forget your password</small></span></summary>
+            <div class="settings-disclosure-body">
+              <form id="generate-recovery">
+                <p>Generating a code replaces any previous code.</p>
+                <label>Current password <input name="password" type="password" autocomplete="current-password" minlength="5" maxlength="512" required></label>
+                <button class="primary" type="submit">Generate recovery code</button>
+                <p id="generate-recovery-status" role="status"></p>
+              </form>
+            </div>
+          </details>
+          <button id="logout" type="button">Sign out</button>
+        </section>
+        <section id="settings-backups" class="settings-page" hidden>
+          <h2>Backups</h2>
+          <div id="account-recovery-archives" class="settings-stack">
+            <p>Save your characters, images, and theme in an encrypted file. Keep the recovery key somewhere safe.</p>
+            <label>Recovery key <input data-recovery="key" type="password" autocomplete="off" spellcheck="false" maxlength="64"></label>
+            <div class="settings-actions">
+              <button data-recovery="generate" type="button">Generate recovery key</button>
+              <button data-recovery="full" class="primary" type="button">Create full backup</button>
+            </div>
+            <details id="backup-file-options" class="settings-disclosure">
+              <summary><span>Restore or update a backup<small>Open a backup file or add an incremental backup</small></span></summary>
+              <div class="settings-disclosure-body settings-stack">
+                <label>Backup files <input data-recovery="files" type="file" accept=".hca" multiple></label>
+                <div class="settings-actions">
+                  <button data-recovery="preview" class="primary" type="button">Preview restore</button>
+                  <button data-recovery="incremental" type="button">Create incremental backup</button>
+                </div>
+              </div>
+            </details>
+            <button data-recovery="cancel" type="button" hidden>Cancel recovery operation</button>
+            <section data-recovery="summary" class="settings-restore-preview" tabindex="-1" hidden>
+              <h3>Restore preview</h3>
+              <p data-recovery="details"></p>
+              <ul data-recovery="rows"></ul>
+              <label><input data-recovery="theme" type="checkbox"> Apply the saved theme to this account</label>
+              <button data-recovery="restore" type="button">Restore verified characters</button>
+            </section>
+            <p data-recovery="status" role="status"></p>
+          </div>
+          <details class="settings-disclosure">
+            <summary><span>Hosted backups<small>Keep an encrypted copy with Horizon</small></span></summary>
+            <div class="settings-disclosure-body">
+              <div id="hosted-archives" class="settings-stack">
+                <p>Keep an encrypted copy online. Enter your recovery key above to verify the file. Upload a full backup before adding incremental backups.</p>
+                <label>Encrypted archive <input data-hosted="file" type="file" accept=".hca"></label>
+                <button data-hosted="upload" type="button">Upload or resume</button>
+                <button data-hosted="refresh" type="button">Refresh hosted backups</button>
+                <details class="settings-disclosure">
+                  <summary><span>Storage and retention</span></summary>
+                  <div class="settings-disclosure-body">
+                    <label>Storage limit (MiB)<input data-hosted="limit" type="number" min="0" max="8192" value="2048"></label>
+                    <label>Retention days (0 keeps backups until removed)<input data-hosted="days" type="number" min="0" max="3650" value="0"></label>
+                    <button data-hosted="policy" type="button">Save storage policy</button>
+                  </div>
+                </details>
+                <button data-hosted="cancel" type="button" hidden>Cancel hosted transfer</button>
+                <ul data-hosted="list"></ul>
+                <p data-hosted="status" role="status"></p>
+              </div>
+            </div>
+          </details>
+          <details id="trusted-devices" class="settings-disclosure" hidden>
+            <summary><span>Trusted devices<small>Keep encrypted copies on your other computers</small></span></summary>
+            <div class="settings-disclosure-body settings-stack">
+              <p>Approve only devices you trust. Revoking a device stops future transfers. Copies it already downloaded may remain.</p>
+              <p data-device="current"></p>
+              <div class="settings-actions">
+                <label>Device name <input data-device="label" type="text" value="Horizon Desktop" maxlength="64"></label>
+                <button data-device="register" type="button">Register this device</button>
+              </div>
+              <label hidden>Current account password <input data-device="password" type="password" autocomplete="current-password"></label>
+              <button data-device="bootstrap" type="button" hidden>Approve first trusted device</button>
+              <p class="settings-pairing-code">Approval code for this device <output data-device="code"></output></p>
+              <label hidden>Code shown on a pending device <input data-device="approval-code" type="text" autocomplete="off" maxlength="10"></label>
+              <button data-device="refresh" type="button">Refresh trusted devices</button>
+              <ul data-device="list"></ul>
+              <label hidden><input data-device="automatic" type="checkbox" disabled> Automatically replicate my hosted backups to this device</label>
+              <button data-device="sync" type="button" disabled hidden>Sync encrypted copies now</button>
+              <p data-device="local-status"></p>
+              <details class="settings-disclosure">
+                <summary><span>Manage backup copies</span></summary>
+                <div class="settings-disclosure-body">
+                  <label>Backup to recover <select data-device="archives"></select></label>
+                  <button data-device="prepare" type="button">Prepare restore preview</button>
+                  <label>Remove local copy <select data-device="remove-local"></select></label>
+                  <button data-device="remove" type="button">Remove selected local copy</button>
+                </div>
+              </details>
+              <button data-device="cancel" type="button" hidden>Cancel replica operation</button>
+              <p data-device="status" role="status"></p>
+            </div>
+          </details>
+        </section>
+        <section id="settings-appearance" class="settings-page" hidden>
+          <h2>Appearance</h2>
+          <div class="appearance-server-theme">
+            <div class="settings-row">
+              <label for="ignore-server-themes">Ignore server themes</label>
+              <input id="ignore-server-themes" type="checkbox">
+            </div>
+            <p id="server-theme-note" class="forum-meta" hidden></p>
+          </div>
+          <section id="appearance-themes" class="appearance-section" aria-labelledby="appearance-themes-title">
+            <h3 id="appearance-themes-title">Themes</h3>
+            <select id="appearance-theme" class="visually-hidden" tabindex="-1" aria-hidden="true"><option value="horizon">Horizon</option><option value="basic-light">Basic Light</option><option value="basic-mid">Basic Mid</option><option value="basic-dark">Basic Dark</option><option value="vanilla">Vanilla</option><option value="sage">Sage</option><option value="cinnamon">Cinnamon</option><option value="lavender">Lavender</option><option value="nutmeg">Nutmeg</option><option value="clove">Clove</option><option value="d2-steel">D2 Steel</option><option value="burnt-titanium">Burnt Titanium</option></select>
+            <div id="theme-groups" class="appearance-theme-gallery" role="region" aria-label="Theme gallery" tabindex="0">
+              <section class="theme-category" data-theme-category="horizon">
+                <div id="horizon-theme-gallery" role="radiogroup" aria-label="Horizon"></div>
+              </section>
+              <section class="theme-category" data-theme-category="basic">
+                <h3>Basic</h3>
+                <div id="basic-theme-gallery" role="radiogroup" aria-label="Basic"></div>
+              </section>
+              <section class="theme-category" data-theme-category="spice" aria-labelledby="spice-themes-heading">
+                <h3 id="spice-themes-heading">Spice Themes</h3>
+                <div id="theme-gallery" role="radiogroup" aria-label="Spice themes"></div>
+              </section>
+              <section class="theme-category" data-theme-category="metals" aria-labelledby="metals-themes-heading">
+                <h3 id="metals-themes-heading">Metals</h3>
+                <div id="metal-theme-gallery" role="radiogroup" aria-label="Metals"></div>
+              </section>
+            </div>
+          </section>
+          <section id="appearance-dice" class="appearance-section" aria-labelledby="appearance-dice-title">
+            <h3 id="appearance-dice-title">Dice style</h3>
+            <p class="appearance-note">Choose how dice look in the tray and in rolls.</p>
+            <div id="appearance-dice-options" class="appearance-options" role="group" aria-labelledby="appearance-dice-title"></div>
+          </section>
+          <section id="appearance-shapes" class="appearance-section" aria-labelledby="appearance-shapes-title">
+            <h3 id="appearance-shapes-title">Avatar and server icons</h3>
+            <p class="appearance-note">Choose the outline for profile pictures and server icons.</p>
+            <div id="appearance-shape-options" class="appearance-options" role="group" aria-labelledby="appearance-shapes-title"></div>
+          </section>
+        </section>
+        <section id="settings-media" class="settings-page" hidden>
+          <h2>Media</h2>
+          <details id="desktop-peer-settings" class="settings-disclosure" hidden>
+            <summary><span>Peer sharing<small>Share cached attachments with other Horizon users</small></span></summary>
+            <div class="settings-disclosure-body">
+              <p>Direct transfers can reveal your IP address to other authorized Horizon peers.</p>
+              <label>Peer sharing<select id="peer-mode"><option value="off">Disabled</option><option value="active">While the window is visible</option><option value="tray">While running, including in the tray</option></select></label>
+              <label>Upload limit (KiB/s)<input id="peer-upload" type="number" min="16" max="8192" value="512"></label>
+              <label>Cache limit (MiB)<input id="peer-cache-limit" type="number" min="0" max="8192" value="2048"></label>
+              <label><input id="peer-metered" type="checkbox" checked> Pause on reported metered or data-saving networks</label>
+              <p id="peer-settings-status" role="status"></p>
+            </div>
+          </details>
+          <details class="settings-disclosure">
+            <summary><span>Media previews</span></summary>
+            <div class="settings-disclosure-body">
+              <label>YouTube previews<select id="appearance-youtube"><option value="expanded">Expanded player</option><option value="compact">Minimized until opened</option></select></label>
+              <label>Linked images and GIFs<select id="appearance-links"><option value="expanded">Expanded previews</option><option value="compact">Minimized until opened</option></select></label>
+              <label>Uploaded image size<select id="appearance-images"><option value="expanded">Larger inline images</option><option value="compact">Small thumbnails</option></select></label>
+              <label>Full-size images<select id="appearance-image-loading"><option value="expanded">Load full images as they come into view</option><option value="compact">Keep thumbnails until clicked</option></select></label>
+              <label>Video and audio loading<select id="appearance-av"><option value="expanded">Load media as it comes into view</option><option value="compact">Load only when played</option></select></label>
+              <label>Document previews<select id="appearance-documents"><option value="expanded">Load previews as they come into view</option><option value="compact">Load only when expanded</option></select></label>
+            </div>
+          </details>
+          <details class="settings-disclosure">
+            <summary><span>Chat image uploads</span></summary>
+            <div class="settings-disclosure-body">
+              <label>Image format<select id="chat-image-format"><option value="avif">AVIF</option><option value="webp">WebP</option></select></label>
+              <label>Quality (25–95)<input id="chat-image-quality" type="number" min="25" max="95" value="72"></label>
+              <label>Maximum image edge<select id="chat-image-maximum"><option value="2560">2560 px</option><option value="1280">1280 px</option><option value="2048">2048 px</option><option value="4096">4096 px</option><option value="0">No resize</option></select></label>
+              <small>Horizon uploads the compressed image and removes source metadata. Animated images cannot be sent through this optimizer.</small>
+            </div>
+          </details>
+        </section>
+        <section id="settings-profile" aria-label="Edit profile" hidden>
+          <form id="edit-profile">
+      <div id="edit-banner" class="mini-banner">
+        <button class="banner-upload" type="button" data-pick-image="banner" aria-label="Change banner" title="Change banner"></button>
+        <button class="icon clear-banner" type="button" data-remove-image="banner" aria-label="Remove banner" title="Remove banner">−</button>
+      </div>
+      <div class="mini-content">
+        <div class="edit-avatar-row">
+          <button id="edit-avatar" type="button" data-pick-image="avatar" aria-label="Change avatar" title="Change avatar"></button>
+          <button class="icon" type="button" data-remove-image="avatar" aria-label="Remove avatar" title="Remove avatar">−</button>
+        </div>
+        <input id="edit-display-name" name="displayName" aria-label="Display name" maxlength="40" required>
+        <p id="edit-profile-handle"></p>
+        <input name="status" aria-label="Status" maxlength="120" placeholder="Add a status">
+        <textarea name="bio" aria-label="Bio" maxlength="500" rows="1" placeholder="Add a bio"></textarea>
+        <dl class="member-since"><dt>Member Since</dt><dd id="edit-member-since"></dd></dl>
+        <input type="file" name="avatarFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+        <input type="file" name="bannerFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+        <div class="profile-edit-actions">
+          <button type="submit" class="primary">Save changes</button>
+        </div>
+        <p id="profile-status" role="status"></p>
+      </div>
+          </form>
+        </section>
+<section id="characters-menu" aria-labelledby="characters-heading" hidden>
+        <section id="character-settings">
+          <h2 id="characters-heading">Character Settings</h2>
+          <form id="proxy-import">
+            <label>Tupperbox export <input name="export" type="file" accept=".json,application/json" required></label>
+            <button type="submit" class="primary">Import characters</button>
+          </form>
+          <p id="proxy-status" role="status"></p>
+          <label>Search characters <input id="proxy-search" type="search"></label>
+          <div class="character-editor-layout">
+            <div>
+              <button id="new-proxy" class="primary" type="button">New character</button>
+              <div id="proxy-roster"></div>
+            </div>
+            <div id="proxy-editor" hidden>
+              <form id="edit-proxy" class="profile-card-editor" aria-label="Edit character profile">
+                <div id="proxy-banner" class="mini-banner">
+                  <button class="banner-upload" type="button" data-pick-image="banner" aria-label="Change character banner" title="Change banner"></button>
+                  <button class="icon clear-banner" type="button" data-remove-image="banner" aria-label="Remove character banner" title="Remove banner">−</button>
+                </div>
+                <div class="mini-content">
+                  <div class="edit-avatar-row">
+                    <button id="proxy-avatar" type="button" data-pick-image="avatar" aria-label="Change character avatar" title="Change avatar"></button>
+                    <button class="icon" type="button" data-remove-image="avatar" aria-label="Remove character avatar" title="Remove avatar">−</button>
+                  </div>
+                <label>Editing variant <select id="proxy-edit-variant"></select></label>
+                <div class="variant-editor-actions"><button id="new-character-variant" type="button">New variant</button><button id="use-character-variant" type="button">Use variant</button><button id="delete-character-variant" type="button">Delete variant</button></div>
+                <label id="variant-label-field" hidden>Variant name <input name="variantName" maxlength="60"><small>Blank profile fields and images use Main’s details.</small></label>
+                <button id="proxy-body-preview" type="button" class="full-body-upload" data-pick-image="fullBody" aria-label="Change full-body image"><span>Click to upload a full-body image</span></button>
+                <button type="button" data-remove-image="fullBody">Remove full-body image</button>
+                <input type="file" name="fullBodyFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+                <label>Name <input name="name" maxlength="100" required></label>
+                <label>Four-character hash <input name="designation" pattern="[A-Za-z0-9]{4}" maxlength="4" required></label><p id="variant-hash-help" class="forum-meta" hidden>Optional. Leave blank to use Main’s hash. Variants may share the same hash.</p>
+                <label>Status <input name="status" maxlength="120" placeholder="Add a status"></label><p id="variant-status-help" class="forum-meta" hidden>Optional. Leave blank to use Main’s status.</p>
+                <label>Group <input name="group" maxlength="100" list="proxy-groups"></label>
+                <datalist id="proxy-groups"></datalist>
+                <div class="proxy-brackets">
+                  <label>Prefix <input name="prefix" maxlength="100"></label>
+                  <label>Suffix <input name="suffix" maxlength="100"></label>
+                </div>
+                <label>Description <textarea name="description" maxlength="4000" rows="4"></textarea></label>
+                <input type="file" name="avatarFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+                <input type="file" name="bannerFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+                <p id="proxy-editor-status" role="status"></p>
+                <div class="actions">
+                  <button class="primary" type="submit">Save character</button>
+                  <button id="delete-proxy" type="button">Delete character</button>
+                </div>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+</section>
+        <section id="settings-about" hidden>
+          <h2>Horizon Chat</h2>
+          <p>BrokenSynapse’s self-hosted roleplay messenger for direct messages, community channels, and character identities.</p>
+          <h3>Third-party credits and licenses</h3>
+          <dl>
+            <dt>Twemoji</dt>
+            <dd>
+              Emoji artwork by the Twemoji contributors. Artwork licensed under Creative Commons Attribution 4.0 International.
+              <a href="https://github.com/jdecked/twemoji">Project</a> ·
+              <a href="https://creativecommons.org/licenses/by/4.0/">License</a>
+            </dd>
+            <dt>Gemoji</dt>
+            <dd>Emoji shortcode data from <a href="https://github.com/github/gemoji">Gemoji</a>, distributed under the MIT license.</dd>
+            <dt>Lucide icons</dt>
+            <dd>Lucide, bundled under its <a href="vendor/lucide/LICENSE" target="_blank" rel="noopener">license notices</a>.</dd>
+            <dt>Noto Sans typeface</dt><dd>By the Noto Project Authors, bundled under the <a href="fonts/noto-sans/OFL.txt" target="_blank" rel="noopener">SIL Open Font License 1.1</a>. Used by Basic themes.</dd>
+            <dt>Shippori Mincho B1 typeface</dt><dd>By the Shippori Mincho Project Authors (FONTDASU), under the <a href="fonts/shippori-mincho-b1/OFL.txt" target="_blank" rel="noopener">SIL Open Font License 1.1</a>.</dd>
+            <dt>Play typeface</dt>
+            <dd>Play by Jonas Hecksher, Playtypes and e-types AS, bundled under the <a href="fonts/play/OFL.txt" target="_blank" rel="noopener">SIL Open Font License 1.1</a>.</dd>
+            <dt>Milonga typeface</dt>
+            <dd>Milonga by Impallari Type, bundled under the <a href="fonts/milonga/OFL.txt" target="_blank" rel="noopener">SIL Open Font License 1.1</a>.</dd>
+            <dt>Unicode Emoji Data</dt>
+            <dd>Additional shortcode names derived from <a href="https://www.unicode.org/reports/tr51/">Unicode Emoji 17.0</a> under the <a href="https://www.unicode.org/license.txt">Unicode License</a>.</dd>
+          </dl>
+        </section>
+      </div>
+      <button class="settings-close icon" type="button" data-close aria-label="Close settings">×</button>
+    </div>
+  </dialog>
+  <dialog id="character-binder" aria-labelledby="character-binder-heading" aria-keyshortcuts="Alt+C">
+    <header class="binder-header">
+      <div><h2 id="character-binder-heading">Character binder</h2><p>Choose the persona you want to be.</p></div>
+      <span class="binder-shortcut">Alt+C</span>
+      <button type="button" class="icon" data-close aria-label="Close character binder">×</button>
+    </header>
+    <div class="binder-search"><label for="character-binder-search">Search characters by name</label><input id="character-binder-search" type="search" autocomplete="off" autofocus placeholder="Start typing a character name…"><span id="character-binder-count" aria-live="polite"></span></div>
+    <div class="binder-pages" tabindex="-1"><div id="character-binder-cards" class="binder-card-grid"></div><p id="character-binder-empty" hidden>No characters match this name.</p></div>
+    <p id="character-binder-status" role="status"></p>
+  </dialog>
+  <div id="persona-variant-menu" popover aria-label="Character variants" role="menu"></div>
+  <dialog id="new-variant-dialog" class="server-dialog"><form><h2>New character variant</h2><label>Variant name<input name="name" maxlength="60" required placeholder="Outfit, transformation, power stage…"></label><p>Blank variant fields and images inherit Main. Set an override to change just this version.</p><p role="status"></p><div class="actions"><button type="button" data-close>Cancel</button><button type="submit" class="primary">Create variant</button></div></form></dialog>
+  <dialog id="channel-password-settings" class="server-dialog"><form><h2>Channel password</h2><label class="role-option"><input name="enabled" type="checkbox"> Require a password for this channel</label><label id="new-channel-password-field">New password<input name="password" type="password" autocomplete="new-password" minlength="4" maxlength="128"></label><p>Only this channel is affected. The platform owner can bypass this password.</p><p role="status"></p><div class="actions"><button type="button" data-close>Cancel</button><button type="submit" class="primary">Save</button></div></form></dialog>
+  <template id="profile-image-fields">
+    <div class="profile-image-field">
+      <label>Avatar image <input type="file" name="avatarFile" accept="image/png,image/jpeg,image/webp,image/gif"></label>
+      <button type="button" data-remove-image="avatar">Remove avatar</button>
+    </div>
+    <div class="profile-image-field">
+      <label>Banner image <input type="file" name="bannerFile" accept="image/png,image/jpeg,image/webp,image/gif"></label>
+      <button type="button" data-remove-image="banner">Remove banner</button>
+    </div>
+  </template>
+</body>
+</html>

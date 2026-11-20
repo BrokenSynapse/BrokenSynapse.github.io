@@ -1,0 +1,29 @@
+:root[data-css-theme] #character-binder{inset:18px;width:calc(100% - 36px);height:calc(100dvh - 36px);max-width:1400px;max-height:none;margin:auto;padding:0;background:var(--palette-rail);color:var(--text);border:1px solid var(--palette-border);border-radius:16px;overflow:hidden}
+#character-binder[open]{display:flex;flex-direction:column}
+.binder-header{display:flex;align-items:center;gap:16px;padding:18px 22px;border-bottom:1px solid var(--palette-border);background:var(--palette-sidebar);flex-shrink:0}
+.binder-header h2{margin:0;font-size:22px}.binder-header p{margin:4px 0 0;color:var(--palette-muted);font-size:12px}.binder-header>div{margin-right:auto}.binder-shortcut{font:11px ui-monospace,monospace;border:1px solid var(--palette-border);border-radius:5px;padding:4px 6px;color:var(--palette-muted)}
+.binder-search{padding:14px 22px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px 16px;background:var(--palette-sidebar);border-bottom:1px solid var(--palette-border);flex-shrink:0}
+.binder-search label{grid-column:1/-1;font-size:12px;color:var(--palette-muted);margin:0}.binder-search input{margin:0;min-width:0}.binder-search>span{align-self:center;font-size:12px;color:var(--palette-muted)}
+.binder-pages{position:relative;flex:1;min-height:0;overflow:auto;padding:22px 22px 28px 54px;background:linear-gradient(90deg,#00000026 0 25px,transparent 25px)}
+.binder-pages::before{content:'';position:absolute;left:10px;top:34px;width:10px;height:18px;border:1px solid var(--palette-border);border-radius:6px;background:var(--palette-surface);box-shadow:0 160px 0 -1px var(--palette-surface),0 160px 0 0 var(--palette-border),0 320px 0 -1px var(--palette-surface),0 320px 0 0 var(--palette-border);pointer-events:none}
+.binder-card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(245px,1fr));align-items:start;gap:22px}
+#character-binder .binder-card{display:block;width:100%;min-width:0;padding:7px;text-align:left;font-size:14px;color:var(--text);border:1px solid var(--palette-border);border-radius:13px;background:linear-gradient(145deg,#ffffff08,#ffffff02 40%,#0000000a);box-shadow:0 3px 8px #0002;overflow:hidden;transition:border-color .12s,background .12s}
+#character-binder .binder-card:hover{border-color:var(--accent);background:var(--glass-hover)}
+#character-binder .binder-card[aria-pressed=true]{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent),0 3px 8px #0002}
+.binder-sleeve{border:1px solid var(--palette-border);border-radius:9px;overflow:hidden;background:var(--palette-surface);min-height:255px}
+.binder-sleeve .mini-banner{height:100px;background-color:var(--palette-sidebar);padding:0}
+.binder-sleeve .mini-content{padding:0 14px 16px}.binder-sleeve .mini-content>.avatar{width:56px;height:56px;flex-basis:56px;margin-top:-28px;margin-bottom:12px;border:3px solid var(--palette-surface);z-index:1}
+.binder-sleeve h3{font:inherit;font-size:17px;font-weight:700;margin:0 0 8px;overflow-wrap:anywhere}.binder-sleeve p{font-size:13px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0;color:var(--text)}
+.binder-sleeve .profile-number,.binder-sleeve .member-since{color:var(--palette-muted)}
+.binder-card-footer{display:flex;justify-content:space-between;gap:10px;padding:10px 3px 3px;font-size:11px;color:var(--palette-muted);overflow-wrap:anywhere}.binder-card[aria-pressed=true] .binder-card-footer>span:last-child{color:var(--text);font-weight:700}
+#character-binder-empty{color:var(--palette-muted);padding:28px;text-align:center}
+#character-binder-status:not(:empty){margin:0;padding:10px 22px;border-top:1px solid var(--palette-border)}
+@media(max-width:600px){:root[data-css-theme] #character-binder{inset:8px;width:calc(100% - 16px);height:calc(100dvh - 16px)}.binder-header,.binder-search{padding:12px}.binder-header h2{font-size:19px}.binder-shortcut{display:none}.binder-pages{padding:14px 12px 20px 32px;background:linear-gradient(90deg,#00000026 0 16px,transparent 16px)}.binder-pages::before{left:4px;width:7px}.binder-card-grid{grid-template-columns:repeat(auto-fill,minmax(min(100%,225px),1fr));gap:14px}}
+@media(prefers-reduced-motion:reduce){#character-binder .binder-card{transition:none}}
+.binder-sleeve .member-since{border-color:var(--palette-border)}
+
+/* Every sleeve, including the main account, matches the largest card. */
+.binder-card-grid { grid-auto-rows: 1fr; align-items: stretch; }
+#character-binder .binder-card { display: flex; flex-direction: column; height: 100%; }
+.binder-card .binder-sleeve { flex: 1; width: 100%; }
+.binder-card .binder-card-footer { flex: none; width: 100%; }

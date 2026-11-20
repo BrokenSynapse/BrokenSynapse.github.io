@@ -12,6 +12,19 @@ services:
       - caddy_config:/config
     depends_on:
       - api
+      - horizon-chat
+
+  horizon-chat:
+    image: node:24-bookworm-slim
+    restart: unless-stopped
+    command: ["node", "/app/server.mjs"]
+    environment:
+      HORIZON_BIND: 0.0.0.0
+      HORIZON_DB: /data/horizon.sqlite
+      HORIZON_SECURE_COOKIE: "1"
+    volumes:
+      - ./horizon-chat:/app:ro
+      - horizon_data:/data
 
   api:
     build: ./api
@@ -33,3 +46,4 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+  horizon_data:

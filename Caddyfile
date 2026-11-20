@@ -1,4 +1,8 @@
 :80 {
+    handle /horizon-chat/api/* {
+        reverse_proxy horizon-chat:8091
+    }
+
     handle /api/* {
         reverse_proxy api:3000
     }

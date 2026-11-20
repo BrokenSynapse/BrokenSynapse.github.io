@@ -132,6 +132,18 @@
         0 0 42px rgba(255, 209, 0, 0.18);
     }
 
+    .horizon-button {
+      grid-column: 1 / -1;
+      min-height: 140px;
+      gap: 14px;
+    }
+
+    .horizon-button img {
+      position: relative;
+      width: clamp(48px, 9vw, 94px);
+      height: auto;
+    }
+
     .big-button span {
       position: relative;
       z-index: 1;
@@ -178,6 +190,10 @@
 
       <a class="big-button" href="aac.html">
         <span>Advance Auto Cards</span>
+      </a>
+      <a class="big-button horizon-button" href="/horizon-chat/">
+        <img src="/horizon-chat/logo.png" alt="" width="94" height="86">
+        <span>Horizon Chat</span>
       </a>
     </section>
 
