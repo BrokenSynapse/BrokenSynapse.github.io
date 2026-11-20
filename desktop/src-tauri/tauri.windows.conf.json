@@ -1,3 +1,21 @@
 {
-  "bundle": { "targets": ["nsis"] }
+  "bundle": {
+    "targets": [
+      "nsis"
+    ],
+    "windows": {
+      "allowDowngrades": false,
+      "webviewInstallMode": {
+        "type": "offlineInstaller",
+        "silent": true
+      },
+      "nsis": {
+        "template": "installer/installer.nsi",
+        "compression": "zlib",
+        "installerHooks": "installer/HorizonPages.nsh",
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico"
+      }
+    }
+  }
 }

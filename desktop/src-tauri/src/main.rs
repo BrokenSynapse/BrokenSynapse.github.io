@@ -11,6 +11,8 @@ use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
 mod media_cache;
 mod transport;
+#[cfg(windows)]
+mod windows_chrome;
 
 const BROKEN_SYNAPSE: &str = "https://brokensynapse.us/";
 
@@ -41,7 +43,14 @@ fn open_in_browser(url: &Url) {
 }
 
 fn main() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(windows)]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        windows_chrome::desktop_window_action,
+        windows_chrome::desktop_update_version,
+        windows_chrome::desktop_open_update,
+    ]);
+    builder
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
             None,
@@ -87,23 +96,33 @@ fn main() {
                 "Horizon Chat"
             };
             let window =
-                WebviewWindowBuilder::new(app, "horizon", WebviewUrl::App("index.html".into()))
-                    .initialization_script(platform_script)
-                    .title(title)
-                    .inner_size(1280.0, 800.0)
-                    .on_navigation(|url| {
-                        if url.as_str() == BROKEN_SYNAPSE {
-                            open_in_browser(url);
-                        }
-                        is_horizon(url)
-                    })
-                    .on_new_window(|url, _| {
-                        if matches!(url.scheme(), "https" | "http") {
-                            open_in_browser(&url);
-                        }
-                        NewWindowResponse::Deny
-                    })
-                    .build()?;
+                WebviewWindowBuilder::new(app, "horizon", WebviewUrl::App("index.html".into()));
+            #[cfg(windows)]
+            let window = window
+                .decorations(false)
+                .initialization_script(concat!(
+                    "Object.defineProperty(window,'__HORIZON_TITLEBAR_ICON__',{value:'data:image/png;base64,",
+                    include_str!("../icons/titlebar.png.b64"),
+                    "'});",
+                    include_str!("windows-chrome.js"),
+                ));
+            let window = window
+                .initialization_script(platform_script)
+                .title(title)
+                .inner_size(1280.0, 800.0)
+                .on_navigation(|url| {
+                    if url.as_str() == BROKEN_SYNAPSE {
+                        open_in_browser(url);
+                    }
+                    is_horizon(url)
+                })
+                .on_new_window(|url, _| {
+                    if matches!(url.scheme(), "https" | "http") {
+                        open_in_browser(&url);
+                    }
+                    NewWindowResponse::Deny
+                })
+                .build()?;
 
             let close_to_tray = CheckMenuItem::with_id(
                 app,

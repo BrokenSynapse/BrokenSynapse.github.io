@@ -6,14 +6,14 @@
   <meta name="color-scheme" content="dark">
   <title>Horizon Chat · BrokenSynapse</title>
   <link rel="icon" type="image/png" href="singularity-logo.png?v=2">
-  <link rel="stylesheet" href="messenger.css?v=appearance-collections">
+  <link rel="stylesheet" href="messenger.css?v=character-dashboard">
   <link rel="stylesheet" href="composer.css?v=media-preferences">
   <link rel="stylesheet" href="highlight.css">
   <link rel="stylesheet" href="palette-themes.css?v=subtle-chat-selection">
   <link rel="stylesheet" href="character-binder.css?v=2">
   <script defer src="highlight.min.js"></script>
   <script defer src="highlight-lua.min.js"></script>
-  <script type="module" src="messenger.js?v=appearance-collections"></script>
+  <script type="module" src="messenger.js?v=character-dashboard"></script>
 </head>
 <body>
   <p id="desktop-connection" role="status" hidden></p>
@@ -813,7 +813,8 @@
             </div>
           </details>
         </section>
-        <section id="settings-profile" aria-label="Edit profile" hidden>
+        <section id="settings-profile" class="settings-page" aria-labelledby="settings-profile-title" hidden>
+          <h2 id="settings-profile-title">Profile</h2>
           <form id="edit-profile">
       <div id="edit-banner" class="mini-banner">
         <button class="banner-upload" type="button" data-pick-image="banner" aria-label="Change banner" title="Change banner"></button>
@@ -838,61 +839,111 @@
       </div>
           </form>
         </section>
-<section id="characters-menu" aria-labelledby="characters-heading" hidden>
-        <section id="character-settings">
-          <h2 id="characters-heading">Character Settings</h2>
-          <form id="proxy-import">
-            <label>Tupperbox export <input name="export" type="file" accept=".json,application/json" required></label>
-            <button type="submit" class="primary">Import characters</button>
-          </form>
-          <p id="proxy-status" role="status"></p>
-          <label>Search characters <input id="proxy-search" type="search"></label>
+        <section id="characters-menu" class="settings-page" aria-labelledby="characters-heading" hidden>
+          <h2 id="characters-heading">Characters</h2>
           <div class="character-editor-layout">
-            <div>
-              <button id="new-proxy" class="primary" type="button">New character</button>
-              <div id="proxy-roster"></div>
-            </div>
-            <div id="proxy-editor" hidden>
-              <form id="edit-proxy" class="profile-card-editor" aria-label="Edit character profile">
-                <div id="proxy-banner" class="mini-banner">
-                  <button class="banner-upload" type="button" data-pick-image="banner" aria-label="Change character banner" title="Change banner"></button>
-                  <button class="icon clear-banner" type="button" data-remove-image="banner" aria-label="Remove character banner" title="Remove banner">−</button>
+            <aside class="character-browser" aria-label="Character library">
+              <div class="character-browser-toolbar">
+                <label class="visually-hidden" for="proxy-search">Search characters</label>
+                <input id="proxy-search" type="search" placeholder="Search characters" aria-keyshortcuts="Control+K">
+                <div class="character-toolbar-actions">
+                  <span id="proxy-count" aria-live="polite"></span>
+                  <button id="new-proxy" class="primary" type="button">New character</button>
                 </div>
-                <div class="mini-content">
-                  <div class="edit-avatar-row">
-                    <button id="proxy-avatar" type="button" data-pick-image="avatar" aria-label="Change character avatar" title="Change avatar"></button>
-                    <button class="icon" type="button" data-remove-image="avatar" aria-label="Remove character avatar" title="Remove avatar">−</button>
+                <details class="settings-disclosure character-library-tools">
+                  <summary>Import or export</summary>
+                  <div class="settings-disclosure-body">
+                    <form id="proxy-import">
+                      <label>Tupperbox export <input name="export" type="file" accept=".json,application/json" required></label>
+                      <button type="submit">Import characters</button>
+                    </form>
+                    <button id="proxy-export" type="button">Export an encrypted backup</button>
                   </div>
-                <label>Editing variant <select id="proxy-edit-variant"></select></label>
-                <div class="variant-editor-actions"><button id="new-character-variant" type="button">New variant</button><button id="use-character-variant" type="button">Use variant</button><button id="delete-character-variant" type="button">Delete variant</button></div>
-                <label id="variant-label-field" hidden>Variant name <input name="variantName" maxlength="60"><small>Blank profile fields and images use Main’s details.</small></label>
-                <button id="proxy-body-preview" type="button" class="full-body-upload" data-pick-image="fullBody" aria-label="Change full-body image"><span>Click to upload a full-body image</span></button>
-                <button type="button" data-remove-image="fullBody">Remove full-body image</button>
-                <input type="file" name="fullBodyFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
-                <label>Name <input name="name" maxlength="100" required></label>
-                <label>Four-character hash <input name="designation" pattern="[A-Za-z0-9]{4}" maxlength="4" required></label><p id="variant-hash-help" class="forum-meta" hidden>Optional. Leave blank to use Main’s hash. Variants may share the same hash.</p>
-                <label>Status <input name="status" maxlength="120" placeholder="Add a status"></label><p id="variant-status-help" class="forum-meta" hidden>Optional. Leave blank to use Main’s status.</p>
-                <label>Group <input name="group" maxlength="100" list="proxy-groups"></label>
-                <datalist id="proxy-groups"></datalist>
-                <div class="proxy-brackets">
-                  <label>Prefix <input name="prefix" maxlength="100"></label>
-                  <label>Suffix <input name="suffix" maxlength="100"></label>
+                </details>
+                <p id="proxy-status" role="status"></p>
+              </div>
+              <div id="proxy-roster"></div>
+            </aside>
+            <p id="proxy-editor-empty">Select a character or create one to get started.</p>
+            <div id="proxy-editor" hidden>
+              <form id="edit-proxy" aria-label="Edit character profile">
+                <header class="character-editor-header">
+                  <button id="proxy-back" type="button">← Library</button>
+                  <span id="proxy-header-avatar"></span>
+                  <div><h3 id="proxy-header-name"></h3><p id="proxy-header-meta"></p></div>
+                </header>
+                <div class="character-editor-fields">
+                  <details class="settings-disclosure" open>
+                    <summary>Identity</summary>
+                    <div class="settings-disclosure-body">
+                      <label>Name <input name="name" maxlength="100" required></label>
+                      <div class="proxy-brackets">
+                        <label>Four-character hash <input name="designation" pattern="[A-Za-z0-9]{4}" maxlength="4" required></label>
+                        <label>Group <input name="group" maxlength="100" list="proxy-groups"></label>
+                      </div>
+                      <p id="variant-hash-help" class="forum-meta" hidden>Leave blank to use Main’s hash.</p>
+                      <datalist id="proxy-groups"></datalist>
+                      <label>Status <input name="status" maxlength="120" placeholder="Add a status"></label>
+                      <p id="variant-status-help" class="forum-meta" hidden>Leave blank to use Main’s status.</p>
+                      <div class="proxy-brackets">
+                        <label>Prefix <input name="prefix" maxlength="100"></label>
+                        <label>Suffix <input name="suffix" maxlength="100"></label>
+                      </div>
+                      <label>Description <textarea name="description" maxlength="4000" rows="4"></textarea></label>
+                    </div>
+                  </details>
+                  <details class="settings-disclosure">
+                    <summary>Appearance</summary>
+                    <div class="settings-disclosure-body character-image-grid">
+                      <div class="character-image-tile">
+                        <strong>Avatar</strong>
+                        <button id="proxy-avatar" class="character-image-preview" type="button" data-view-image="avatar" aria-label="View character avatar"></button>
+                        <button type="button" data-pick-image="avatar" aria-label="Change character avatar">Upload avatar</button>
+                        <button type="button" data-remove-image="avatar" aria-label="Remove character avatar">Remove avatar</button>
+                      </div>
+                      <div class="character-image-tile">
+                        <strong>Banner</strong>
+                        <button id="proxy-banner" class="character-image-preview" type="button" data-view-image="banner" aria-label="View character banner"></button>
+                        <button type="button" data-pick-image="banner" aria-label="Change character banner">Upload banner</button>
+                        <button type="button" data-remove-image="banner" aria-label="Remove character banner">Remove banner</button>
+                      </div>
+                      <div class="character-image-tile">
+                        <strong>Full-body image</strong>
+                        <button id="proxy-body-preview" class="character-image-preview" type="button" data-view-image="fullBody" aria-label="View full-body image"></button>
+                        <button type="button" data-pick-image="fullBody" aria-label="Change full-body image">Upload full-body image</button>
+                        <button type="button" data-remove-image="fullBody">Remove full-body image</button>
+                      </div>
+                      <input type="file" name="fullBodyFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+                      <input type="file" name="avatarFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+                      <input type="file" name="bannerFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+                    </div>
+                  </details>
+                  <details class="settings-disclosure" id="proxy-variants-section">
+                    <summary>Variants</summary>
+                    <div class="settings-disclosure-body">
+                      <label>Editing variant <select id="proxy-edit-variant"></select></label>
+                      <label id="variant-label-field" hidden>Variant name <input name="variantName" maxlength="60"><small>Blank profile fields and images use Main’s details.</small></label>
+                      <div class="settings-actions">
+                        <button id="new-character-variant" type="button">New variant</button>
+                        <button id="use-character-variant" type="button">Use variant</button>
+                        <button id="delete-character-variant" type="button">Delete variant</button>
+                      </div>
+                    </div>
+                  </details>
+                  <details class="settings-disclosure" id="proxy-advanced">
+                    <summary>Advanced</summary>
+                    <div class="settings-disclosure-body"><button id="delete-proxy" type="button">Delete character</button></div>
+                  </details>
                 </div>
-                <label>Description <textarea name="description" maxlength="4000" rows="4"></textarea></label>
-                <input type="file" name="avatarFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
-                <input type="file" name="bannerFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
-                <p id="proxy-editor-status" role="status"></p>
-                <div class="actions">
-                  <button class="primary" type="submit">Save character</button>
-                  <button id="delete-proxy" type="button">Delete character</button>
-                </div>
-                </div>
+                <footer class="character-editor-footer">
+                  <div><p id="proxy-draft-status" aria-live="polite"></p><p id="proxy-editor-status" role="status"></p></div>
+                  <button class="primary" type="submit" aria-keyshortcuts="Control+S">Save character</button>
+                </footer>
               </form>
             </div>
           </div>
         </section>
-</section>
-        <section id="settings-about" hidden>
+        <section id="settings-about" class="settings-page" hidden>
           <h2>Horizon Chat</h2>
           <p>BrokenSynapse’s self-hosted roleplay messenger for direct messages, community channels, and character identities.</p>
           <h3>Third-party credits and licenses</h3>
@@ -932,6 +983,11 @@
     <p id="character-binder-status" role="status"></p>
   </dialog>
   <div id="persona-variant-menu" popover aria-label="Character variants" role="menu"></div>
+  <dialog id="proxy-image-dialog" aria-labelledby="proxy-image-title">
+    <h2 id="proxy-image-title"></h2>
+    <button class="settings-close icon" type="button" data-close aria-label="Close image preview">×</button>
+    <img id="proxy-image-full" alt="">
+  </dialog>
   <dialog id="new-variant-dialog" class="server-dialog"><form><h2>New character variant</h2><label>Variant name<input name="name" maxlength="60" required placeholder="Outfit, transformation, power stage…"></label><p>Blank variant fields and images inherit Main. Set an override to change just this version.</p><p role="status"></p><div class="actions"><button type="button" data-close>Cancel</button><button type="submit" class="primary">Create variant</button></div></form></dialog>
   <dialog id="channel-password-settings" class="server-dialog"><form><h2>Channel password</h2><label class="role-option"><input name="enabled" type="checkbox"> Require a password for this channel</label><label id="new-channel-password-field">New password<input name="password" type="password" autocomplete="new-password" minlength="4" maxlength="128"></label><p>Only this channel is affected. The platform owner can bypass this password.</p><p role="status"></p><div class="actions"><button type="button" data-close>Cancel</button><button type="submit" class="primary">Save</button></div></form></dialog>
   <template id="profile-image-fields">

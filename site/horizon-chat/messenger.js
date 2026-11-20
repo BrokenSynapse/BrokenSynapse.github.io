@@ -87,6 +87,13 @@ let personaPublishQueue=Promise.resolve(),publishedPersonaKey='';
 function publishPersona(){if(!account)return;const viewer=account,data={proxyId:selectedProxy?.id||0,variantId:selectedProxy?.variantId||0},key=JSON.stringify([account.id,data]);if(key===publishedPersonaKey)return;publishedPersonaKey=key;personaPublishQueue=personaPublishQueue.catch(()=>{}).then(()=>viewer===account?call('persona',data):null).catch(()=>{if(publishedPersonaKey===key)publishedPersonaKey='';});}
 let identityRestored = false;
 let editingProxy = null;
+let proxyBaseline = '';
+let proxySaving = false;
+let proxyMutation = false;
+let proxyRosterSignature;
+let proxyRosterQuery = '';
+let proxyUnfilteredScroll = 0;
+const proxyGroupStates = new Map();
 const imageDrafts = new WeakMap();
 const documents = createDocumentReader(highlight);
 let customEmojiCatalog = [];
@@ -149,6 +156,13 @@ function setAccount(next) {
   selectedProxy = null;
   identityRestored = false;
   editingProxy = null;
+  proxyBaseline = '';
+  proxyGroupStates.clear();
+  proxyRosterSignature = undefined;
+  proxyRosterQuery = '';
+  proxyUnfilteredScroll = 0;
+  $('characters-menu').removeAttribute('data-editor-open');
+  $('proxy-editor-empty').hidden = false;
   $('proxy-editor').hidden = true;
   updateSpeaker();
   preferences.close();
@@ -270,11 +284,12 @@ function profileImage(url, kind) {
   return null;
 }
 
-function appendProfileImage(container, url, kind) {
+function appendProfileImage(container, url, kind, lazy = false) {
   const source = profileImage(url, kind);
   if (!source) return;
   const picture = document.createElement('img');
   picture.alt = '';
+  if (lazy) picture.loading = 'lazy';
   picture.referrerPolicy = 'no-referrer';
   picture.addEventListener('load', () => picture.classList.add('loaded'), { once: true });
   picture.addEventListener('error', () => picture.remove(), { once: true });
@@ -282,11 +297,11 @@ function appendProfileImage(container, url, kind) {
   container.append(picture);
 }
 
-function characterAvatar(url) {
+function characterAvatar(url, lazy = false) {
   const avatar = document.createElement('span');
   avatar.className = 'avatar';
   avatar.setAttribute('aria-hidden', 'true');
-  appendProfileImage(avatar, url, 'avatar');
+  appendProfileImage(avatar, url, 'avatar', lazy);
   return avatar;
 }
 
@@ -425,6 +440,7 @@ async function refreshList() {
     } else if (selectedProxy) selectedProxy = proxies.find(proxy => proxy.id === selectedProxy.id) ?? null;
     updateAccountFooter();
     updateSpeaker();publishPersona();
+    if (!$('characters-menu').hidden) drawProxyRoster();
   }
   servers = result.servers || [];
   serverLayout = result.serverLayout || [];
@@ -2752,6 +2768,8 @@ async function openProfile(person, anchor, {refresh=false}={}) {
 
 const settingsPages = [...preferences.querySelectorAll('[data-settings-page]')];
 function showSettingsPage(page) {
+  if (page !== 'characters' && preferences.open && !$('characters-menu').hidden && !allowProxyNavigation()) return;
+  preferences.querySelector('.settings-main').dataset.page = page;
   for (const button of settingsPages) {
     const selected = button.dataset.settingsPage === page;
     button.setAttribute('aria-pressed', String(selected));
@@ -3046,23 +3064,12 @@ $('edit-profile').onsubmit = async event => {
     submit.disabled = false;
   }
 };
-$('open-character-dashboard').onclick = async () => {
-  const viewer = account;
-  if (!viewer) return;
-  $('proxy-status').textContent = '';
-  $('proxy-search').value = '';
+$('open-character-dashboard').onclick = () => {
+  if (!account) return;
   showSettingsPage('characters');
-  drawProxies();
-  try {
-    const result = await call('proxies');
-    if (account !== viewer) return;
-    proxies = applyPendingVariants(result.proxies);
-    drawProxies();
-  } catch (error) {
-    $('proxy-status').textContent = error.message;
-  }
+  drawProxyRoster();
 };
-
+$('proxy-export').onclick = () => showSettingsPage('backups');
 
 function updateSpeaker() {
   const indicator = $('sending-as');
@@ -3076,49 +3083,96 @@ function updateSpeaker() {
 function drawProxies() {
   drawPersonaRail();
   if ($('character-binder').open) drawCharacterBinder();
+  drawProxyRoster();
+}
+
+function paintProxySelection() {
+  for (const row of $('proxy-roster').querySelectorAll('[data-proxy-id]')) {
+    row.setAttribute('aria-pressed', String(Number(row.dataset.proxyId) === editingProxy?.id));
+  }
+}
+
+function drawProxyRoster() {
   const query = $('proxy-search').value.trim().toLowerCase();
+  const signature = JSON.stringify([query, proxies.map(proxy =>
+    [proxy.id, proxy.name, proxy.group, proxy.prefix, proxy.suffix, proxy.designation, proxy.avatarUrl])]);
+  if (signature === proxyRosterSignature) return;
+  proxyRosterSignature = signature;
+  const terms = query.split(/\s+/);
   const root = $('proxy-roster');
-  root.replaceChildren();
+  if (!proxyRosterQuery && query) proxyUnfilteredScroll = root.scrollTop;
+  const scroll = proxyRosterQuery && !query ? proxyUnfilteredScroll : root.scrollTop;
+  proxyRosterQuery = query;
   const groups = new Map();
+  let count = 0;
   for (const proxy of proxies) {
-    if (![proxy.name, proxy.group, proxy.prefix, proxy.suffix].join(' ').toLowerCase().includes(query)) continue;
+    const trigger = (proxy.prefix ?? '') + 'text' + (proxy.suffix ?? '');
+    const searchable = [proxy.name, proxy.group || 'Ungrouped', proxy.prefix, proxy.suffix, proxy.designation, trigger].join(' ').toLowerCase();
+    if (!terms.every(term => searchable.includes(term))) continue;
     const group = proxy.group || 'Ungrouped';
     if (!groups.has(group)) groups.set(group, []);
     groups.get(group).push(proxy);
+    count++;
   }
-  function choice(name, proxy) {
-    const button = document.createElement('button');
-    button.className = 'character-choice';
-    button.type = 'button';
-    button.setAttribute('aria-pressed', String(Boolean(proxy && editingProxy?.id === proxy.id)));
-    if (proxy) button.append(characterAvatar(proxy.avatarUrl));
-    const label = document.createElement('span');
-    label.textContent = name;
-    button.append(label);
-    if (proxy?.prefix || proxy?.suffix) {
-      const brackets = document.createElement('code');
-      brackets.textContent = proxy.prefix + 'text' + proxy.suffix;
-      button.append(brackets);
-    }
-    button.onclick = () => {
-      if (proxy) openProxyEditor(proxy);
-      else {
-        void switchPersona(0);
-        preferences.close();
-      }
+  $('proxy-count').textContent = (query ? count + ' of ' + proxies.length : String(count)) +
+    (proxies.length === 1 ? ' character' : ' characters');
+  const rows = document.createDocumentFragment();
+  if (!query) {
+    const main = document.createElement('button');
+    main.type = 'button';
+    main.className = 'character-choice';
+    main.textContent = 'Main account';
+    main.onclick = () => {
+      if (!allowProxyNavigation()) return;
+      void switchPersona(0);
+      preferences.close();
     };
-    return button;
+    rows.append(main);
   }
-  root.append(choice('Main account', null));
+  if (!count && query) {
+    const message = document.createElement('p');
+    message.textContent = 'No characters match your search.';
+    rows.append(message);
+  }
   for (const [group, members] of groups) {
     const section = document.createElement('details');
-    section.open = Boolean(query) || members.some(proxy => proxy.id === editingProxy?.id) || groups.size === 1;
+    section.open = Boolean(query) || (proxyGroupStates.get(group) ??
+      (groups.size === 1 || members.some(proxy => proxy.id === editingProxy?.id)));
     const heading = document.createElement('summary');
     heading.textContent = group;
-    section.append(heading, ...members.map(proxy => choice(proxy.name, proxy)));
-    root.append(section);
+    if (!query) heading.addEventListener('click', () => proxyGroupStates.set(group, !section.open));
+    section.append(heading);
+    for (const proxy of members) {
+      const button = document.createElement('button');
+      button.className = 'character-choice';
+      button.type = 'button';
+      button.dataset.proxyId = proxy.id;
+      const avatar = characterAvatar(proxy.avatarUrl, true);
+      const label = document.createElement('span');
+      label.textContent = proxy.name;
+      button.append(avatar, label);
+      if (proxy.prefix || proxy.suffix) {
+        const brackets = document.createElement('code');
+        brackets.textContent = (proxy.prefix ?? '') + 'text' + (proxy.suffix ?? '');
+        brackets.title = brackets.textContent;
+        button.append(brackets);
+      }
+      button.onclick = () => {
+        if (editingProxy?.id === proxy.id) showProxyEditorPane(true);
+        else if (allowProxyNavigation()) {
+          const current = proxies.find(item => item.id === proxy.id);
+          if (current) openProxyEditor(current);
+        }
+      };
+      section.append(button);
+    }
+    rows.append(section);
   }
+  root.replaceChildren(rows);
+  paintProxySelection();
+  root.scrollTop = scroll;
 }
+
 
 function renderPreview(target, person) {
   const banner = document.createElement('div');
@@ -3198,22 +3252,109 @@ function previewAccount() {
   form.querySelector('[data-remove-image="banner"]').hidden = !banner;
 }
 
+const proxyFields = ['name', 'group', 'prefix', 'suffix', 'description', 'designation', 'status'];
+const proxyImageLabels = { avatar: 'avatar', banner: 'banner', fullBody: 'full-body image' };
+
+function currentProxyVersion() {
+  return editingProxy?.variants?.find(version => version.id === editingVariantId) || editingProxy || {};
+}
+
+function proxyFormSnapshot() {
+  const form = $('edit-proxy');
+  return JSON.stringify([...proxyFields, 'variantName'].map(key => form.elements[key].value));
+}
+
+function proxyHasChanges() {
+  if (!proxyBaseline || $('proxy-editor').hidden) return false;
+  const draft = imageDrafts.get($('edit-proxy'));
+  return proxyFormSnapshot() !== proxyBaseline || Boolean(draft?.pending || Object.keys(draft?.values || {}).length);
+}
+
+function paintProxyDraft() {
+  $('proxy-draft-status').textContent = proxySaving ? 'Saving…' : proxyHasChanges() ? 'Unsaved changes' : '';
+}
+
+function setProxyMutation(active) {
+  proxyMutation = active;
+  $('edit-proxy').querySelector('.character-editor-fields').inert = active;
+}
+
+window.addEventListener('beforeunload', event => {
+  if (!proxyHasChanges() && !proxySaving && !proxyMutation) return;
+  event.preventDefault();
+  event.returnValue = '';
+});
+
+function allowProxyNavigation() {
+  if (proxySaving || proxyMutation) return false;
+  if (!proxyHasChanges()) return true;
+  if (!confirm('Discard unsaved character changes?')) return false;
+  if (editingProxy) openProxyEditor(editingProxy, editingVariantId, false);
+  else clearProxyEditor();
+  return true;
+}
+
+function showProxyEditorPane(open) {
+  $('characters-menu').toggleAttribute('data-editor-open', open);
+}
+
+function clearProxyEditor() {
+  editingProxy = null;
+  proxyBaseline = '';
+  resetImages($('edit-proxy'));
+  $('proxy-editor').hidden = true;
+  $('proxy-editor-empty').hidden = false;
+  showProxyEditorPane(false);
+  paintProxySelection();
+}
+
+function paintProxyHeader() {
+  const form = $('edit-proxy');
+  const person = currentProxyVersion();
+  const value = key => form.elements[key].value || (editingVariantId ? person[key] || editingProxy?.[key] : '');
+  $('proxy-header-name').textContent = value('name') || 'New character';
+  const prefix = value('prefix');
+  const suffix = value('suffix');
+  $('proxy-header-meta').textContent = [
+    value('group'), prefix || suffix ? (prefix || '') + 'text' + (suffix || '') : '',
+    editingVariantId ? form.elements.variantName.value : '',
+  ].filter(Boolean).join(' · ');
+}
+
 function previewProxy() {
   const form = $('edit-proxy');
-  const person = editingProxy?.variants?.find(v=>v.id===editingVariantId) || editingProxy || {};
-  const avatar = draftImage(form, 'avatar', person);
-  const banner = draftImage(form, 'banner', person);
-  $('proxy-avatar').replaceChildren(characterAvatar(avatar));
-  $('proxy-banner').querySelector('img')?.remove();
-  appendProfileImage($('proxy-banner'), banner, 'banner');
-  form.querySelector('[data-remove-image="avatar"]').hidden = !avatar;
-  form.querySelector('[data-remove-image="banner"]').hidden = !banner;
-  const body=draftImage(form,'fullBody',person);
-  const preview=$('proxy-body-preview');preview.replaceChildren();
-  if(body)appendProfileImage(preview,body,'banner');else preview.textContent='Click to upload a full-body image';
-  form.querySelector('[data-remove-image="fullBody"]').hidden=!body;
-  for(const kind of ['avatar','banner','fullBody']){const button=form.querySelector('[data-remove-image="'+kind+'"]');if(editingVariantId){button.textContent='Use Main’s '+(kind==='fullBody'?'full-body image':kind);button.hidden=!(imageDrafts.get(form)?.values[kind]??person[kind+'Override']);}else button.textContent='Remove '+(kind==='fullBody'?'full-body image':kind);}
+  const person = currentProxyVersion();
+  $('proxy-header-avatar').replaceChildren(characterAvatar(draftImage(form, 'avatar', person)));
+  for (const [kind, label] of Object.entries(proxyImageLabels)) {
+    const url = draftImage(form, kind, person);
+    const view = form.querySelector('[data-view-image="' + kind + '"]');
+    const pick = form.querySelector('[data-pick-image="' + kind + '"]');
+    const remove = form.querySelector('[data-remove-image="' + kind + '"]');
+    view.replaceChildren();
+    if (url) appendProfileImage(view, url, kind === 'avatar' ? 'avatar' : 'banner');
+    else view.textContent = 'No ' + label;
+    view.disabled = !url;
+    pick.textContent = (url ? 'Replace ' : 'Upload ') + label;
+    remove.textContent = editingVariantId ? 'Use Main’s ' + label : 'Remove ' + label;
+    remove.hidden = editingVariantId ? !(imageDrafts.get(form)?.values[kind] ?? person[kind + 'Override']) : !url;
+  }
+  paintProxyHeader();
+  paintProxyDraft();
 }
+
+for (const view of $('edit-proxy').querySelectorAll('[data-view-image]')) {
+  view.onclick = () => {
+    const kind = view.dataset.viewImage;
+    const source = profileImage(draftImage($('edit-proxy'), kind, currentProxyVersion()), kind === 'avatar' ? 'avatar' : 'banner');
+    if (!source) return;
+    const label = proxyImageLabels[kind];
+    $('proxy-image-title').textContent = label[0].toUpperCase() + label.slice(1);
+    $('proxy-image-full').alt = label;
+    $('proxy-image-full').src = source;
+    $('proxy-image-dialog').showModal();
+  };
+}
+$('proxy-image-dialog').addEventListener('close', () => $('proxy-image-full').removeAttribute('src'));
 
 async function encodeMapImage(file) {
 
@@ -3307,6 +3448,7 @@ function bindImages(form, render, status) {
       const file = picker.files[0];
       if (!file) return;
       draft.pending++;
+      if (form.id === 'edit-proxy') paintProxyDraft();
       try {
         const value = await encodeProfileImage(file, kind);
         if (imageDrafts.get(form) === draft && picker.files[0] === file) {
@@ -3318,6 +3460,7 @@ function bindImages(form, render, status) {
         if (imageDrafts.get(form) === draft && picker.files[0] === file) status.textContent = error.message;
       } finally {
         draft.pending--;
+        if (form.id === 'edit-proxy') paintProxyDraft();
       }
     };
     form.querySelector('[data-remove-image="' + kind + '"]').onclick = () => {
@@ -3330,28 +3473,46 @@ function bindImages(form, render, status) {
 }
 
 let editingVariantId=0;
-function openProxyEditor(proxy, variantId = proxy?.variantId ?? 0) {
+function openProxyEditor(proxy, variantId = proxy?.variantId ?? 0, reveal = true) {
   editingProxy = proxy;
-  editingVariantId=variantId;
+  editingVariantId = variantId;
   const form = $('edit-proxy');
-  for (const key of ['name', 'group', 'prefix', 'suffix', 'description', 'status']) form.elements[key].value = proxy?.[key] || '';
-  form.elements.designation.value = proxy?.designation || account.publicTag;
   drawVariantEditor();
   const groups = [...new Set(proxies.map(character => character.group).filter(Boolean))];
   $('proxy-groups').replaceChildren(...groups.map(group => new Option(group)));
   resetImages(form);
+  proxyBaseline = proxyFormSnapshot();
   $('proxy-editor').hidden = false;
-  $('delete-proxy').hidden = !proxy;
+  $('proxy-editor-empty').hidden = true;
+  $('proxy-advanced').hidden = !proxy;
   $('proxy-editor-status').textContent = '';
+  if (reveal) {
+    showProxyEditorPane(true);
+    form.querySelector('.character-editor-fields').scrollTop = 0;
+  }
   previewProxy();
-  drawProxies();
+  paintProxySelection();
 }
 
 bindImages($('edit-profile'), previewAccount, $('profile-status'));
-bindImages($('edit-proxy'), previewProxy, $('proxy-editor-status'));
-$('new-proxy').onclick = () => openProxyEditor(null);
-$('edit-proxy').onsubmit = async event => {
+const proxyForm = $('edit-proxy');
+bindImages(proxyForm, previewProxy, $('proxy-editor-status'));
+proxyForm.addEventListener('input', () => { paintProxyHeader(); paintProxyDraft(); });
+proxyForm.addEventListener('invalid', event => { const section = event.target.closest('details'); if (section) section.open = true; }, true);
+$('new-proxy').onclick = () => {
+  if (!allowProxyNavigation()) return;
+  openProxyEditor(null);
+  proxyForm.elements.name.closest('details').open = true;
+  proxyForm.elements.name.focus();
+};
+$('proxy-back').onclick = () => {
+  if (!allowProxyNavigation()) return;
+  showProxyEditorPane(false);
+  $('proxy-search').focus();
+};
+proxyForm.onsubmit = async event => {
   event.preventDefault();
+  if (proxySaving || proxyMutation) return;
   const form = event.currentTarget;
   const viewer = account;
   const edited = editingProxy;
@@ -3362,13 +3523,27 @@ $('edit-proxy').onsubmit = async event => {
     return;
   }
   const submit = form.querySelector('[type="submit"]');
-  submit.disabled = true;
+  const fieldsPanel = form.querySelector('.character-editor-fields');
+  proxySaving = submit.disabled = fieldsPanel.inert = true;
+  status.textContent = '';
+  paintProxyDraft();
   try {
-    const fields = Object.fromEntries(['name', 'group', 'prefix', 'suffix', 'description', 'designation', 'status'].map(key => [key, form.elements[key].value]));
-    const editVariant=editingVariantId;
-    if(editVariant){for(const key of ['name','description','group','prefix','suffix','designation','status'])fields[key]=edited['base'+key[0].toUpperCase()+key.slice(1)]??'';}
+    const values = Object.fromEntries(proxyFields.map(key => [key, form.elements[key].value]));
+    const editVariant = editingVariantId;
+    const fields = editVariant ? Object.fromEntries(proxyFields.map(key =>
+      [key, edited['base' + key[0].toUpperCase() + key.slice(1)] ?? ''])) : values;
     let result = await call(edited ? 'proxies/' + edited.id : 'proxies', fields);
-    result = await call('proxies/'+result.proxy.id+'/variants',{action:'save',variantId:editVariant,name:form.elements.variantName.value,...Object.fromEntries(['description','group','prefix','suffix'].map(key=>[key,form.elements[key].value])),displayName:form.elements.name.value,designation:form.elements.designation.value,status:form.elements.status.value,...draft.values});
+    if (account !== viewer) return;
+    if (!edited) {
+      editingProxy = result.proxy;
+      proxies = applyPendingVariants(result.proxies);
+      drawProxies();
+    }
+    const { name, ...overrides } = values;
+    result = await call('proxies/' + result.proxy.id + '/variants', {
+      ...overrides, action: 'save', variantId: editVariant, name: form.elements.variantName.value,
+      displayName: name, ...draft.values,
+    });
     if (account !== viewer) return;
     proxies = applyPendingVariants(result.proxies);
     if (selectedProxy?.id === result.proxy.id) {
@@ -3376,22 +3551,23 @@ $('edit-proxy').onsubmit = async event => {
       updateAccountFooter();
       updateSpeaker();
     }
-    if (editingProxy === edited && imageDrafts.get(form) === draft) {
-      openProxyEditor(result.proxy,editVariant);
-      status.textContent = 'Character saved.';
-    } else drawProxies();
+    openProxyEditor(result.proxy, editVariant, false);
+    drawProxies();
+    status.textContent = 'Character saved.';
   } catch (error) {
-    status.textContent = error.message;
+    if (account === viewer) status.textContent = error.message;
   } finally {
-    submit.disabled = false;
+    proxySaving = submit.disabled = fieldsPanel.inert = false;
+    paintProxyDraft();
   }
 };
 $('delete-proxy').onclick = async event => {
   const proxy = editingProxy;
-  if (!proxy || !confirm('Delete ' + proxy.name + '? Their past messages will remain.')) return;
+  if (!proxy || proxySaving || proxyMutation || !confirm('Delete ' + proxy.name + '? Their past messages will remain.')) return;
   const viewer = account;
   const button = event.currentTarget;
   button.disabled = true;
+  setProxyMutation(true);
   try {
     const result = await call('proxies/' + proxy.id + '/delete', {});
     if (account !== viewer) return;
@@ -3399,20 +3575,52 @@ $('delete-proxy').onclick = async event => {
     if (selectedProxy?.id === proxy.id) {
       selectPersona(0);
     }
-    if (editingProxy === proxy) {
-      editingProxy = null;
-      $('proxy-editor').hidden = true;
-    }
+    if (editingProxy === proxy) clearProxyEditor();
     drawProxies();
     $('proxy-status').textContent = 'Character deleted.';
   } catch (error) {
     $('proxy-editor-status').textContent = error.message;
   } finally {
     button.disabled = false;
+    setProxyMutation(false);
   }
 };
 
-$('proxy-search').oninput = drawProxies;
+$('proxy-search').oninput = drawProxyRoster;
+preferences.addEventListener('cancel', event => {
+  if (!$('characters-menu').hidden && !allowProxyNavigation()) event.preventDefault();
+});
+document.addEventListener('keydown', event => {
+  if (!preferences.open || $('characters-menu').hidden || document.querySelector('dialog:modal:not(#preferences)')) return;
+  const search = $('proxy-search');
+  if (event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'k') {
+    event.preventDefault();
+    if (matchMedia('(max-width: 760px)').matches && $('characters-menu').hasAttribute('data-editor-open')) {
+      if (!allowProxyNavigation()) return;
+      showProxyEditorPane(false);
+    }
+    search.focus();
+    search.select();
+  } else if (event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 's' && proxyForm.getClientRects().length) {
+    event.preventDefault();
+    if (!proxySaving) proxyForm.requestSubmit();
+  } else if (event.target === search || event.target.matches('#proxy-roster [data-proxy-id]')) {
+    const rows = [...$('proxy-roster').querySelectorAll('details[open] [data-proxy-id]')];
+    const index = rows.indexOf(event.target);
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      (rows[index + (event.key === 'ArrowDown' ? 1 : -1)] || (event.key === 'ArrowUp' ? search : rows[index]))?.focus();
+    } else if (event.key === 'Enter' && event.target === search && rows.length) {
+      event.preventDefault();
+      rows[0].click();
+    } else if (event.key === 'Escape' && (search.value || event.target !== search)) {
+      event.preventDefault();
+      search.value = '';
+      drawProxyRoster();
+      search.focus();
+    }
+  }
+});
 $('proxy-import').onsubmit = async event => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -3462,7 +3670,11 @@ $('logout').onclick = async () => {
   }
 };
 document.querySelectorAll('[data-close]').forEach(button => {
-  button.onclick = () => button.closest('dialog').close();
+  button.onclick = () => {
+    const dialog = button.closest('dialog');
+    if (dialog === preferences && !$('characters-menu').hidden && !allowProxyNavigation()) return;
+    dialog.close();
+  };
 });
 $('inbox').onclick = () => {
   const identity = selectedProxy?.id ?? 0;
@@ -4041,21 +4253,69 @@ function drawVariantEditor(){
   const status=$('edit-proxy').elements.status;status.value=editingVariantId?(version?.statusOverride||''):(editingProxy?.baseStatus??editingProxy?.status??'');status.placeholder=editingVariantId?'Use Main: '+(editingProxy?.baseStatus||'No status'):'Add a status';
   $('variant-status-help').hidden=!editingVariantId;
   for(const key of ['name','description','group','prefix','suffix']){const input=$('edit-proxy').elements[key],base=editingProxy?.['base'+key[0].toUpperCase()+key.slice(1)]??editingProxy?.[key]??'';input.value=editingVariantId?(version?.[key+'Override']||''):base;input.placeholder=editingVariantId?'Use Main: '+(base||'Empty'):'';if(key==='name')input.required=!editingVariantId;}
-  for(const key of ['name','description','group','prefix','suffix']){const input=$('edit-proxy').elements[key],base=editingProxy?.['base'+key[0].toUpperCase()+key.slice(1)]??editingProxy?.[key]??'';input.value=editingVariantId?(version?.[key+'Override']||''):base;input.placeholder=editingVariantId?'Use Main: '+(base||'Empty'):'';if(key==='name')input.required=!editingVariantId;}
   $('new-character-variant').disabled=!editingProxy;
   $('delete-character-variant').hidden=!editingVariantId;
   $('use-character-variant').disabled=!editingProxy||editingProxy.variantId===editingVariantId;
 }
-$('proxy-edit-variant').onchange=()=>{editingVariantId=Number($('proxy-edit-variant').value);resetImages($('edit-proxy'));drawVariantEditor();previewProxy();};
-$('new-character-variant').onclick=()=>{const dialog=$('new-variant-dialog');dialog.querySelector('form').reset();dialog.querySelector('[role=status]').textContent='';dialog.showModal();dialog.querySelector('input').focus();};
-$('new-variant-dialog').querySelector('form').onsubmit=async event=>{
-  event.preventDefault();if(!editingProxy)return;
-  const form=event.currentTarget,submit=form.querySelector('[type=submit]');submit.disabled=true;
-  try{const result=await call('proxies/'+editingProxy.id+'/variants',{action:'create',name:form.elements.name.value,fromVariantId:editingVariantId});proxies=applyPendingVariants(result.proxies);openProxyEditor(result.proxy,result.variantId);$('new-variant-dialog').close();}
-  catch(error){form.querySelector('[role=status]').textContent=error.message;}finally{submit.disabled=false;}
+$('proxy-edit-variant').onchange = event => {
+  const next = Number(event.target.value);
+  if (!allowProxyNavigation()) { event.target.value = String(editingVariantId); return; }
+  openProxyEditor(editingProxy, next, false);
 };
-$('use-character-variant').onclick=async()=>{if(!editingProxy)return;try{const person=await selectCharacterVariant(editingProxy.id,editingVariantId);openProxyEditor(person,editingVariantId);}catch(error){$('proxy-editor-status').textContent=error.message;}};
-$('delete-character-variant').onclick=async()=>{if(!editingProxy||!editingVariantId||!confirm('Delete this variant? Existing posts keep their appearance.'))return;try{const result=await call('proxies/'+editingProxy.id+'/variants',{action:'delete',variantId:editingVariantId});proxies=applyPendingVariants(result.proxies);if(selectedProxy?.id===result.proxy.id){selectedProxy=result.proxy;updateAccountFooter();}openProxyEditor(result.proxy,0);}catch(error){$('proxy-editor-status').textContent=error.message;}};
+$('new-character-variant').onclick = () => {
+  if (!allowProxyNavigation()) return;
+  const dialog = $('new-variant-dialog');
+  dialog.querySelector('form').reset();
+  dialog.querySelector('[role=status]').textContent = '';
+  dialog.showModal();
+  dialog.querySelector('input').focus();
+};
+$('new-variant-dialog').querySelector('form').onsubmit = async event => {
+  event.preventDefault();
+  if (!editingProxy || proxyMutation) return;
+  const viewer = account;
+  const form = event.currentTarget;
+  const submit = form.querySelector('[type=submit]');
+  submit.disabled = true;
+  setProxyMutation(true);
+  try {
+    const result = await call('proxies/' + editingProxy.id + '/variants', {
+      action: 'create', name: form.elements.name.value, fromVariantId: editingVariantId,
+    });
+    if (account !== viewer) return;
+    proxies = applyPendingVariants(result.proxies);
+    openProxyEditor(result.proxy, result.variantId);
+    drawProxies();
+    $('new-variant-dialog').close();
+  } catch (error) {
+    form.querySelector('[role=status]').textContent = error.message;
+  } finally { submit.disabled = false; setProxyMutation(false); }
+};
+$('use-character-variant').onclick = async () => {
+  if (!editingProxy || !allowProxyNavigation()) return;
+  const viewer = account;
+  setProxyMutation(true);
+  try {
+    const person = await selectCharacterVariant(editingProxy.id, editingVariantId);
+    if (account === viewer) openProxyEditor(person, editingVariantId);
+  } catch (error) { $('proxy-editor-status').textContent = error.message; }
+  finally { setProxyMutation(false); }
+};
+$('delete-character-variant').onclick = async () => {
+  if (!editingProxy || !editingVariantId || !allowProxyNavigation() ||
+      !confirm('Delete this variant? Existing posts keep their appearance.')) return;
+  const viewer = account;
+  setProxyMutation(true);
+  try {
+    const result = await call('proxies/' + editingProxy.id + '/variants', { action: 'delete', variantId: editingVariantId });
+    if (account !== viewer) return;
+    proxies = applyPendingVariants(result.proxies);
+    if (selectedProxy?.id === result.proxy.id) { selectedProxy = result.proxy; updateAccountFooter(); }
+    openProxyEditor(result.proxy, 0);
+    drawProxies();
+  } catch (error) { $('proxy-editor-status').textContent = error.message; }
+  finally { setProxyMutation(false); }
+};
 function fillBodyPanel(panel,url){
   const source=profileImage(url,'banner');
   if(panel.dataset.source===(source||'')&&panel.firstElementChild)return;
@@ -4134,7 +4394,7 @@ function openVariantMenu(anchor){
     button.onpointerdown=event=>event.preventDefault();
     button.onclick=()=>{menu.hidePopover();void selectCharacterVariant(selectedProxy.id,variant.id).catch(showError);if(active&&!composer.hidden)editor.focus();};menu.append(button);
   }
-  const manage=document.createElement('button');manage.type='button';manage.textContent='Manage variants…';manage.className='manage-variants';manage.onclick=()=>{menu.hidePopover();openSettings('characters');drawProxies();openProxyEditor(selectedProxy);};menu.append(manage);
+  const manage=document.createElement('button');manage.type='button';manage.textContent='Manage variants…';manage.className='manage-variants';manage.onclick=()=>{menu.hidePopover();openSettings('characters');drawProxyRoster();openProxyEditor(selectedProxy);$('proxy-variants-section').open=true;};menu.append(manage);
   menu.showPopover({source:anchor});
   const box=anchor.getBoundingClientRect(),width=menu.offsetWidth,height=menu.offsetHeight;
   menu.style.left=Math.max(8,Math.min(box.left,innerWidth-width-8))+'px';
