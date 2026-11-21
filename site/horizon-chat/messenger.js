@@ -2592,6 +2592,12 @@ function authValidation(values, registering) {
 }
 
 $('auth-mode').onclick = () => setMode(!creating);
+auth.elements.username.addEventListener('keydown', event => {
+  if (creating || event.key !== 'Enter' || event.isComposing) return;
+  event.preventDefault();
+  $('auth-status').textContent = '';
+  auth.elements.password.focus();
+});
 auth.onsubmit = async event => {
   event.preventDefault();
   const submit = auth.querySelector('[type="submit"]');
