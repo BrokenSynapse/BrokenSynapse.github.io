@@ -108,6 +108,7 @@ fn main() {
             #[cfg(windows)]
             let window = window
                 .decorations(false)
+                .disable_drag_drop_handler()
                 .initialization_script(concat!(
                     "Object.defineProperty(window,'__HORIZON_TITLEBAR_ICON__',{value:'data:image/png;base64,",
                     include_str!("../icons/titlebar.png.b64"),
@@ -140,6 +141,8 @@ fn main() {
                     NewWindowResponse::Deny
                 })
                 .build()?;
+            #[cfg(windows)]
+            configure_webview_inputs(&window)?;
 
             let close_to_tray = CheckMenuItem::with_id(
                 app,
@@ -264,4 +267,26 @@ mod tests {
             assert!(!is_horizon(&rejected.parse().unwrap()), "{rejected}");
         }
     }
+}
+
+#[cfg(windows)]
+fn configure_webview_inputs(window: &tauri::WebviewWindow) -> tauri::Result<()> {
+    use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings4;
+    use windows::core::Interface;
+
+    window.with_webview(|platform| {
+        let configure = || -> windows::core::Result<()> {
+            let settings = unsafe { platform.controller().CoreWebView2()?.Settings()? };
+            unsafe { settings.SetIsStatusBarEnabled(false)? };
+            let form_settings = settings.cast::<ICoreWebView2Settings4>()?;
+            unsafe {
+                form_settings.SetIsGeneralAutofillEnabled(false)?;
+                form_settings.SetIsPasswordAutosaveEnabled(false)?;
+            }
+            Ok(())
+        };
+        if let Err(error) = configure() {
+            eprintln!("Could not configure WebView input controls: {error}");
+        }
+    })
 }

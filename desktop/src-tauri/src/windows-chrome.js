@@ -17,6 +17,8 @@
     style.textContent = `
       :root { --horizon-caption-height: 34px; --horizon-edged-viewport: calc(100dvh - var(--horizon-caption-height)); }
       body { padding-top: var(--horizon-caption-height); }
+      input[type="password"]::-ms-reveal { display: none; }
+      input::-ms-clear { display: none; }
       #desktop-connection:not([hidden]) { top: calc(var(--horizon-caption-height) + .5rem); }
       body > .app, #preferences, #server-settings-screen { height: var(--horizon-edged-viewport); }
       #preferences, #server-settings-screen { inset-block-start: var(--horizon-caption-height); }
@@ -78,6 +80,11 @@
     `;
     document.head.append(style);
     document.body.prepend(frame);
+    for (const input of document.querySelectorAll('input[name="username"]')) {
+      input.spellcheck = false;
+      input.autocapitalize = 'none';
+      input.autocomplete = 'off';
+    }
     const maximize = frame.querySelector('[data-window-action=maximize]');
     const syncMaximize = async () => {
       const expanded = await action('state');

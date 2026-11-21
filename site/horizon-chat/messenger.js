@@ -609,7 +609,6 @@ function control(label, caption, action) {
 }
 
 let movingChannel = null;
-const channelPlacement = new Set(['before', 'after', 'inside']);
 const channelRoute = (server, channel) => 'servers/' + server.id + '/channels' + (channel ? '/' + channel.id : '');
 
 async function changeChannel(server, channel, payload) {
@@ -696,6 +695,7 @@ function drawChannelTree(server) {
   const sidebar = $('server-sidebar').parentElement;
   const menuButton = $('channel-menu-button');
   const channels = server?.channels ?? [];
+  const parents = new Map(channels.map(channel => [channel.id, channel.parentId]));
   const children = new Map();
   for (const channel of channels) {
     if (!children.has(channel.parentId)) children.set(channel.parentId, []);
@@ -725,7 +725,9 @@ function drawChannelTree(server) {
     return (children.get(parent) || []).map(channel => {
       const row = document.createElement('li');
       const line = document.createElement('div');
-      line.className = 'channel-row';line.dataset.typingThread=channel.conversationId;
+      line.className = 'channel-row';
+      line.dataset.typingThread = channel.conversationId;
+      line.dataset.channelId = channel.id;
       const separator = channel.kind === 'separator';
       const name = separator ? document.createElement('hr')
         : control('Open ' + channel.name, channel.name, () => openThread(channel.conversationId, 0, server.id));
@@ -762,10 +764,23 @@ function drawChannelTree(server) {
           openChannelMenu(server, channel, event, more);
         };
         line.draggable = true;
+        const hint = 'Drag to reorder. Hold Shift to nest.';
+        line.title = hint;
+        if (!separator) name.title += ' · ' + hint;
+        function placementAt(event) {
+          const source = movingChannel?.channel.id;
+          if (!source || movingChannel.server !== server.id) return null;
+          for (let target = channel.id; target != null; target = parents.get(target)) {
+            if (target === source) return null;
+          }
+          if (event.shiftKey && !separator && channel.depth < 7) return 'inside';
+          const bounds = line.getBoundingClientRect();
+          return event.clientY < bounds.top + bounds.height / 2 ? 'before' : 'after';
+        }
         line.ondragstart = event => {
           movingChannel = { server: server.id, channel };
           event.dataTransfer.effectAllowed = 'move';
-          event.dataTransfer.setData('text/plain', channel.name);
+          event.dataTransfer.setData('application/x-horizon-channel', String(channel.id));
           line.classList.add('dragging-channel');
         };
         line.ondragend = () => {
@@ -774,18 +789,18 @@ function drawChannelTree(server) {
           for (const target of tree.querySelectorAll('[data-drop-position]')) delete target.dataset.dropPosition;
         };
         line.ondragover = event => {
-          if (movingChannel?.server !== server.id || movingChannel.channel.id === channel.id) return;
+          const placement = placementAt(event);
+          if (!placement) return;
           event.preventDefault();
           event.dataTransfer.dropEffect = 'move';
-          const bounds = line.getBoundingClientRect();
-          const relative = (event.clientY - bounds.top) / bounds.height;
-          line.dataset.dropPosition = !separator && channel.depth < 7 && relative >= .28 && relative <= .72
-            ? 'inside' : relative < .5 ? 'before' : 'after';
+          line.dataset.dropPosition = placement;
         };
-        line.ondragleave = () => { delete line.dataset.dropPosition; };
+        line.ondragleave = event => {
+          if (!line.contains(event.relatedTarget)) delete line.dataset.dropPosition;
+        };
         line.ondrop = event => {
-          const placement = line.dataset.dropPosition;
-          if (!movingChannel || !channelPlacement.has(placement)) return;
+          const placement = placementAt(event);
+          if (!placement) return;
           event.preventDefault();
           event.stopPropagation();
           const source = movingChannel.channel;
@@ -4166,19 +4181,37 @@ $('draft').addEventListener('keydown',event=>{
 $('draft').addEventListener('focus',()=>clearTimeout(mentionBlurTimer));
 $('draft').addEventListener('blur',()=>{mentionBlurTimer=setTimeout(hideMentions,150);});
 
-// Prevent the browser from navigating away when a file is dropped anywhere.
-for (const type of ['dragover','drop']) window.addEventListener(type,event=>{
-  if (![...(event.dataTransfer?.types || [])].includes('Files')) return;
-  if (event.target instanceof Element && event.target.closest('input[type=file]')) return;
+// Keep the WebView or browser from navigating to a dropped file.
+const chatDropTarget = composer.closest('.chat');
+const hasDroppedFiles = event => event.dataTransfer?.types.includes('Files');
+const writableDropTarget = event => chatDropTarget.contains(event.target) &&
+  !document.querySelector('dialog[open]') && !forum.composing && active && !composer.hidden;
+
+window.addEventListener('dragover', event => {
+  if (!hasDroppedFiles(event) || event.target.closest?.('input[type="file"]')) {
+    chatDropTarget.classList.remove('chat-drop-ready');
+    return;
+  }
   event.preventDefault();
-  if(type==='dragover') { event.dataTransfer.dropEffect = active && !composer.hidden ? 'copy' : 'none'; return; }
-  event.stopImmediatePropagation();
-  const files=[...event.dataTransfer.files];
-  if (document.querySelector('dialog[open]') || forum.composing) return;
-  if (!active || composer.hidden) { showError(new Error('Open a writable chat before dropping a file.')); return; }
-  if (files.length !== 1) { showError(new Error('Drop one file at a time.')); return; }
-  attachFile(files[0]);editor.focus();
-},{capture:true});
+  const ready = Boolean(writableDropTarget(event));
+  event.dataTransfer.dropEffect = ready ? 'copy' : 'none';
+  chatDropTarget.classList.toggle('chat-drop-ready', ready);
+}, true);
+window.addEventListener('dragleave', event => {
+  if (!chatDropTarget.contains(event.relatedTarget)) chatDropTarget.classList.remove('chat-drop-ready');
+}, true);
+window.addEventListener('drop', event => {
+  chatDropTarget.classList.remove('chat-drop-ready');
+  if (!hasDroppedFiles(event) || event.target.closest?.('input[type="file"]')) return;
+  event.preventDefault();
+  if (!writableDropTarget(event)) return;
+  if (event.dataTransfer.files.length !== 1) {
+    showError(new Error('Drop one file at a time.'));
+    return;
+  }
+  attachFile(event.dataTransfer.files[0]);
+  editor.focus();
+}, true);
 
 function renderMentionToken(token) {
   const name=token.slice(1).replace(/^\{(.*)\}$/,'$1').normalize('NFKC').toLocaleLowerCase();
