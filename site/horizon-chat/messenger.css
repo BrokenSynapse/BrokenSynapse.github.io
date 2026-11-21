@@ -1691,3 +1691,5 @@ dialog :is(input, textarea, select):focus-visible,
   outline: 2px solid var(--accent, #c8aff3);
   outline-offset: -2px;
 }
+
+.auth-help { display: block; margin-top: 4px; color: var(--palette-muted, var(--menu-muted, currentColor)); }

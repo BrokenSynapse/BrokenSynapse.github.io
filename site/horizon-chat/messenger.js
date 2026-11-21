@@ -116,7 +116,8 @@ async function call(route, payload) {
   const result = await response.json();
   if (!response.ok) {
     if (response.status === 401 && account) setAccount(null);
-    throw new Error(result.error);
+    const invalidLogin = route === 'login' && response.status === 400;
+    throw new Error(invalidLogin ? 'Username or passphrase is incorrect.' : result.error);
   }
   return result;
 }
@@ -130,8 +131,12 @@ function setMode(registering) {
   $('tag-field').hidden = !creating;
   $('open-recovery').hidden = creating;
   auth.elements.tag.disabled = !creating;
-  auth.elements.username.pattern = creating ? '[a-zA-Z0-9_]{3,24}' : '[a-zA-Z0-9_]{3,24}(:[A-Za-z0-9]{4})?';
-  auth.elements.username.maxLength = creating ? 24 : 29;
+  for (const field of ['username', 'password']) {
+    const help = $('signup-' + field + '-help');
+    help.hidden = !creating;
+    if (creating) auth.elements[field].setAttribute('aria-describedby', help.id);
+    else auth.elements[field].removeAttribute('aria-describedby');
+  }
   auth.elements.password.autocomplete = creating ? 'new-password' : 'current-password';
   $('auth-status').textContent = '';
 }
@@ -2573,21 +2578,40 @@ async function markThreadRead() {
 }
 
 
+function authValidation(values, registering) {
+  const { username, password, displayName = '', tag = '' } = values;
+  if (!registering) {
+    return username.trim() && password ? null : 'Enter your username and passphrase.';
+  }
+  if (!/^[A-Za-z0-9_]{3,24}$/.test(username.trim())) return 'Use a username with 3–24 letters, numbers, or underscores.';
+  if (password.length < 5) return 'Use a passphrase with at least 5 characters.';
+  if (new TextEncoder().encode(password).length > 512) return 'That passphrase is too long. Choose a shorter one.';
+  if (displayName.trim().length > 40) return 'Use a display name with at most 40 characters.';
+  if (tag && !/^[A-Za-z0-9]{4}$/.test(tag)) return 'Enter four letters or digits for your tag.';
+  return null;
+}
+
 $('auth-mode').onclick = () => setMode(!creating);
 auth.onsubmit = async event => {
   event.preventDefault();
   const submit = auth.querySelector('[type="submit"]');
-  submit.disabled = true;
-  $('auth-status').textContent = '';
+  if (submit.disabled) return;
+  const status = $('auth-status');
+  const values = Object.fromEntries(new FormData(auth));
+  const validation = authValidation(values, creating);
+  status.textContent = validation || '';
+  if (validation) return;
+  const mode = $('auth-mode');
+  submit.disabled = mode.disabled = true;
   try {
-    const result = await call(creating ? 'register' : 'login', Object.fromEntries(new FormData(auth)));
+    const result = await call(creating ? 'register' : 'login', values);
     auth.reset();
     setAccount(result.account);
     if (result.recoveryCode) showRecoveryCode(result.recoveryCode);
   } catch (error) {
-    $('auth-status').textContent = error.message;
+    status.textContent = error.message;
   } finally {
-    submit.disabled = false;
+    submit.disabled = mode.disabled = false;
   }
 };
 
