@@ -7,6 +7,9 @@
         reverse_proxy api:3000
     }
 
+    @horizonUI path /horizon-chat /horizon-chat/*
+    header @horizonUI Permissions-Policy "microphone=(self), camera=()"
+
     root * /srv/site
     file_server
 }

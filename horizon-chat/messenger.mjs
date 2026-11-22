@@ -1,3 +1,5 @@
+import { voiceIceConfig } from './voice-ice.mjs';
+import { createVoiceCalls } from './voice-calls.mjs';
 import { configuredRestartStatus } from './maintenance.mjs';
 import { createTyping } from './typing.mjs';
 import { createChannelPasswords } from './channel-passwords.mjs';
@@ -325,6 +327,31 @@ export function createMessenger(db, { secure, json }) {
   }
 
   const typing=createTyping(db,streams,(conversation,viewer,token)=>mayReadConversation(conversation,viewer)&&(!serverPermissions.channel(conversation)||channelPasswords.allowed(token,conversation,viewer)));
+  const voice = createVoiceCalls({
+    ice: process.env.HORIZON_VOICE === '1' ? voiceIceConfig() : undefined,
+    wake(id, token) {
+      for (const client of streams.get(id) ?? []) {
+        if (client.tokenHash === token && !client.response.write('event: voice-wake\ndata: 1\n\n')) client.response.destroy();
+      }
+    },
+    authorized(conversation, account, token) {
+      if (sessionAccount.get(token, Date.now())?.id !== account || !mayReadConversation(conversation, account)) return false;
+      const channel = serverPermissions.channel(conversation);
+      if (!channel) return !broadcasts.isChannel(conversation);
+      return channel.kind === 'voice' && channelPasswords.allowed(token, conversation, account);
+    },
+    directRecipient(conversation, account) {
+      if (serverPermissions.channel(conversation) || broadcasts.isChannel(conversation)) return null;
+      const pair = peers(conversation);
+      return pair.first_id === account ? pair.second_id : pair.first_id;
+    },
+    ring(recipient, invitation) {
+      for (const client of streams.get(recipient) ?? []) {
+        if (!sessionAccount.get(client.tokenHash, Date.now()) || !mayReadConversation(invitation.conversation, recipient)) continue;
+        if (!client.response.write(`event: voice-invite\ndata: ${JSON.stringify(invitation)}\n\n`)) client.response.destroy();
+      }
+    },
+  });
   const attachmentPeers = createAttachmentPeers({
     authorize(peer, { conversation, message }) {
       return sessionAccount.get(peer.token, Date.now())?.id === peer.account &&
@@ -791,6 +818,13 @@ export function createMessenger(db, { secure, json }) {
     if (route === 'recover' && method === 'POST') return recoverAccount(request, response, tokenHash, account);
     const isAuth = method === 'POST' && ['register', 'login'].includes(route);
     if (!account && !isAuth) return json(response, 401, { error: 'Sign in to continue.' });
+    if (route.startsWith('voice/') && method === 'POST') {
+      if (process.env.HORIZON_VOICE !== '1') return json(response, 404, { error: 'Voice calls are unavailable on this server.' });
+      if (route === 'voice/config') return json(response, 200, { enabled: true });
+      const input = await readJson(request, 20_000);
+      const result = voice(route.slice('voice/'.length), input, account, tokenHash);
+      return json(response, result.status, result.data);
+    }
     if (route.startsWith('peers/') && method === 'POST') {
       if (!allowAttachmentPeers) return json(response, 404, { error: 'Peer attachments are disabled.' });
       const input = await readJson(request, 32 * 1024);

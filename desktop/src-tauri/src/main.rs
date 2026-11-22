@@ -271,17 +271,43 @@ mod tests {
 
 #[cfg(windows)]
 fn configure_webview_inputs(window: &tauri::WebviewWindow) -> tauri::Result<()> {
-    use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings4;
+    use webview2_com::{PermissionRequestedEventHandler, take_pwstr};
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+        COREWEBVIEW2_PERMISSION_KIND, COREWEBVIEW2_PERMISSION_KIND_CAMERA,
+        COREWEBVIEW2_PERMISSION_KIND_MICROPHONE, COREWEBVIEW2_PERMISSION_STATE_DENY,
+        ICoreWebView2Settings4,
+    };
+    use windows::core::PWSTR;
     use windows::core::Interface;
 
     window.with_webview(|platform| {
         let configure = || -> windows::core::Result<()> {
-            let settings = unsafe { platform.controller().CoreWebView2()?.Settings()? };
+            let webview = unsafe { platform.controller().CoreWebView2()? };
+            let settings = unsafe { webview.Settings()? };
             unsafe { settings.SetIsStatusBarEnabled(false)? };
             let form_settings = settings.cast::<ICoreWebView2Settings4>()?;
             unsafe {
                 form_settings.SetIsGeneralAutofillEnabled(false)?;
                 form_settings.SetIsPasswordAutosaveEnabled(false)?;
+                let mut token = 0;
+                webview.add_PermissionRequested(
+                    &PermissionRequestedEventHandler::create(Box::new(|_, args| {
+                        let Some(args) = args else { return Ok(()) };
+                        let mut kind = COREWEBVIEW2_PERMISSION_KIND::default();
+                        args.PermissionKind(&mut kind)?;
+                        if kind == COREWEBVIEW2_PERMISSION_KIND_CAMERA {
+                            args.SetState(COREWEBVIEW2_PERMISSION_STATE_DENY)?;
+                        } else if kind == COREWEBVIEW2_PERMISSION_KIND_MICROPHONE {
+                            let mut uri = PWSTR::null();
+                            args.Uri(&mut uri)?;
+                            if !Url::parse(&take_pwstr(uri)).is_ok_and(|url| is_horizon(&url)) {
+                                args.SetState(COREWEBVIEW2_PERMISSION_STATE_DENY)?;
+                            }
+                        }
+                        Ok(())
+                    })),
+                    &mut token,
+                )?;
             }
             Ok(())
         };

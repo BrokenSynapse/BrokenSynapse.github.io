@@ -1693,3 +1693,19 @@ dialog :is(input, textarea, select):focus-visible,
 }
 
 .auth-help { display: block; margin-top: 4px; color: var(--palette-muted, var(--menu-muted, currentColor)); }
+
+#voice-start { white-space: nowrap; }
+#voice-panel {
+  position: fixed; z-index: 500; inset: auto 12px 12px auto;
+  max-inline-size: min(350px, calc(100vw - 24px)); padding: 12px;
+  border: 1px solid var(--palette-border, var(--menu-line)); border-radius: 9px;
+  background: var(--palette-sidebar, var(--menu-panel)); color: var(--text, inherit);
+}
+#voice-panel p { margin: 4px 0; overflow-wrap: anywhere; }
+#voice-panel p:empty { display: none; }
+#voice-panel button { padding: 5px 8px; }
+#channel-extras { padding: 12px 16px; }
+
+#voice-panel ul { margin-block: 4px; padding-inline-start: 18px; }
+#voice-panel ul:empty { display: none; }
+#voice-panel pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .78rem; }

@@ -1,3 +1,4 @@
+import { setupVoiceCalls } from './voice-calls.js';
 import { apiAsset, apiEvents, apiFetch, apiUrl, isDesktop } from './platform.js';
 import { imageOptions, isChatImage, optimizeChatImage } from './chat-images.js';
 import { setupRecoverySettings } from './recovery-settings.js?v=settings-polish';
@@ -117,7 +118,7 @@ async function call(route, payload) {
   if (!response.ok) {
     if (response.status === 401 && account) setAccount(null);
     const invalidLogin = route === 'login' && response.status === 400;
-    throw new Error(invalidLogin ? 'Username or passphrase is incorrect.' : result.error);
+    throw Object.assign(new Error(invalidLogin ? 'Username or passphrase is incorrect.' : result.error), { status: response.status });
   }
   return result;
 }
@@ -142,6 +143,7 @@ function setMode(registering) {
 }
 
 function setAccount(next) {
+  voiceCalls.account(next);
   trustedDevices.account(next?.id);
   hostedArchives.reset();
   peerAccount(Boolean(next));
@@ -214,6 +216,9 @@ function connectEvents() {
   events = apiEvents();
   const stream = events;
   stream.addEventListener('attachment-peer', peerSignal);
+  stream.addEventListener('voice-invite', voiceCalls.invite);
+  stream.addEventListener('voice-wake', voiceCalls.wake);
+  stream.addEventListener('ready', voiceCalls.wake);
   stream.onopen = () => desktopConnection('');
   events.addEventListener('ready', () => { void synchronize(); void refreshPresence(); void refreshMentions(); void refreshProfileThemes();void typing.refresh();void restartNotice.refresh(); });
   events.addEventListener('member-persona', () => void refreshList().catch(showError));
@@ -1578,6 +1583,11 @@ function updateThreadHeading() {
   kind.textContent = channelKinds[channel?.kind] || '';
   kind.hidden = !channel || channel.kind === 'text';
   updateChannelControls(channel, server);
+  voiceCalls.scope(channel?.kind === 'voice' && !channel.locked
+    ? { id: channel.conversationId, name: channel.name, direct: false }
+    : !server && thread && !thread.broadcast
+      ? { id: thread.id, name: conversationLabel(thread), direct: true }
+      : null);
 }
 
 let showChannelView = true;
@@ -1691,7 +1701,7 @@ function updateChannelControls(channel, server) {
   extras.hidden = channel?.kind !== 'voice';
   history.dataset.channelKind = channel?.kind || '';
   if (channel?.kind === 'voice') {
-    extras.textContent = 'Voice room · Audio is coming later.';
+    extras.textContent = 'Audio connects directly between participants. People in the call may see your IP address.';
 
   }
 }
@@ -1711,6 +1721,10 @@ function showThread() {
   drawMessages();
 }
 
+const voiceCalls = setupVoiceCalls({ call, view: $('voice-panel'), navigate(conversation) {
+  const chat = conversations.find(item => item.id === conversation && !item.broadcast);
+  if (chat) void openThread(chat.id, chat.inboxProxyId ?? 0);
+} });
 const restartNotice=createRestartNotice(call);
 const typing=createTypingUI({call,viewer:()=>account,scope:()=>active?{conversationId:active,postId:activeChannel()?.kind==='forum'?forum.postId:null}:null,identity:()=>({proxyId:selectedProxy?.id,variantId:selectedProxy?.variantId,inboxProxyId}),canType:()=>Boolean(account&&active&&!composer.hidden&&!messageEdit&&!forum.composing&&activeChannel()?.canSend!==false)});
 
